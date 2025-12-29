@@ -3,20 +3,39 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 const modelName = 'gemini-2.5-flash-lite';
 
 function buildPrompt(mode, topic, prompt) {
-  let focus = 'Scegli un tema casuale.';
+  // Base instructions to ensure variety and prevent repetition
+  const baseInstruction = `
+    Sei il motore di gioco per "Impostore" (Spyfall).
+    Il tuo compito è generare UNA SOLA parola (luogo, oggetto, mestiere, concetto).
+    
+    REGOLE CRITICHE:
+    1. NON rispondere MAI con "Spazio", "Astronauta", "Luna", "Marte" a meno che non sia esplicitamente richiesto. Sono parole banned.
+    2. Varia molto le categorie: Cucina, Storia, Geografia, Animali, Oggetti di Casa, Hobby, Sport, Cinema.
+    3. La parola deve essere in ITALIANO.
+    4. Rispondi SOLO con la parola, niente punteggiatura.
+  `;
+
+  let specificInstruction = '';
+
   if (mode === 'topic' && topic) {
-    focus = `Tema scelto: ${topic}.`;
-  }
-  if (mode === 'prompt' && prompt) {
-    focus = `Istruzioni: ${prompt}.`;
+    specificInstruction = `Il tema è: "${topic}". Scegli una parola non banale collegata a questo tema.`;
+  } else if (mode === 'prompt' && prompt) {
+    specificInstruction = `Segui questa richiesta specifica dell'utente: "${prompt}".`;
+  } else {
+    // Mode Auto: Enforce high entropy
+    const seed = Date.now().toString(36);
+    const categories = ['Cucina', 'Sport Estremi', 'Antico Egitto', 'Giardinaggio', 'Tecnologia Retro', 'Strumenti Musicali', 'Mezzi di Trasporto', 'Animali Marini'];
+    const randomCat = categories[Math.floor(Math.random() * categories.length)];
+
+    specificInstruction = `
+      Scegli una parola CASUALE.
+      Per ispirazione, pesca dalla categoria: ${randomCat} (ma non sei obbligato).
+      Assicurati che sia diversa dall'ultima volta.
+      Seed entropia: ${seed}
+    `;
   }
 
-  return [
-    'Sei un generatore di parole per il gioco "Impostore".',
-    'Fornisci una sola parola o una frase molto breve (max 3 parole).',
-    'Rispondi solo con la parola, senza virgolette ne testo extra.',
-    focus,
-  ].join('\n');
+  return `${baseInstruction}\n${specificInstruction}`;
 }
 
 function cleanWord(text) {
@@ -26,6 +45,7 @@ function cleanWord(text) {
     .filter(Boolean)[0]
     .replace(/^"|"$/g, '')
     .replace(/^'|'$/g, '')
+    .replace(/\.$/, '') // Remove trailing dot
     .trim();
 }
 
@@ -71,6 +91,7 @@ export default async function handler(req, res) {
 
     res.status(200).json({ word: cleaned });
   } catch (error) {
+    console.error('Gemini API Error:', error);
     res.status(500).json({ error: 'Generation failed' });
   }
 }
