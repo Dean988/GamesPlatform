@@ -37,6 +37,7 @@ const sheetBody = document.getElementById('sheet-body');
 const sheetClose = document.getElementById('sheet-close');
 
 const restartGameButton = document.getElementById('restart-game');
+const btnEnter = document.getElementById('btn-enter');
 const btnBack = document.getElementById('btn-back-home');
 const landing = document.getElementById('landing');
 const gameFlow = document.getElementById('game-flow');
@@ -348,12 +349,31 @@ revealImpostorsButton.addEventListener('click', () => {
 
 if (restartGameButton) restartGameButton.addEventListener('click', resetGame);
 
+// MAIN NAVIGATION
+if (btnEnter) {
+  btnEnter.addEventListener('click', () => {
+    resetGame();
+    if (landing) {
+      landing.classList.remove('is-active');
+      landing.style.display = 'none';
+    }
+    if (gameFlow) {
+      gameFlow.style.display = 'flex';
+      setTimeout(() => gameFlow.classList.add('is-active'), 10);
+    }
+  });
+}
+
 if (btnBack) btnBack.addEventListener('click', () => {
   resetGame();
-  gameFlow.classList.remove('is-active');
-  gameFlow.style.display = 'none';
-  landing.style.display = 'flex';
-  setTimeout(() => landing.classList.add('is-active'), 10);
+  if (gameFlow) {
+    gameFlow.classList.remove('is-active');
+    gameFlow.style.display = 'none';
+  }
+  if (landing) {
+    landing.style.display = 'flex';
+    setTimeout(() => landing.classList.add('is-active'), 10);
+  }
 });
 
 sheetClose.addEventListener('click', handleSheetClose);
