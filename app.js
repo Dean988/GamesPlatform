@@ -4,7 +4,7 @@ const startPanel = document.getElementById('start');
 
 const playerCountInput = document.getElementById('player-count');
 const impostorCountInput = document.getElementById('impostor-count');
-const playerList = document.getElementById('player-list');
+const playerList = document.getElementById('player-inputs'); // UPDATED ID based on new HTML
 
 const modeInputs = Array.from(document.querySelectorAll('input[name="word-mode"]'));
 const topicField = document.getElementById('topic-field');
@@ -16,6 +16,7 @@ const generateWordButton = document.getElementById('generate-word');
 const wordStatus = document.getElementById('word-status');
 const wordOutput = document.getElementById('word-output');
 const wordError = document.getElementById('word-error');
+const wordBoxContainer = document.getElementById('word-box-container');
 
 const startRolesButton = document.getElementById('start-roles');
 const setupError = document.getElementById('setup-error');
@@ -25,6 +26,7 @@ const revealRoleButton = document.getElementById('reveal-role');
 const nextPlayerButton = document.getElementById('next-player');
 const progressCurrent = document.getElementById('progress-current');
 const progressTotal = document.getElementById('progress-total');
+const progressFill = document.getElementById('progress-fill');
 
 const revealImpostorsButton = document.getElementById('reveal-impostors');
 
@@ -50,7 +52,11 @@ function clampNumber(value, min, max) {
 
 function setActivePanel(panel) {
   panels.forEach((item) => {
-    item.classList.toggle('is-active', item === panel);
+    if (item === panel) {
+      item.classList.add('is-visible');
+    } else {
+      item.classList.remove('is-visible');
+    }
   });
 }
 
@@ -68,18 +74,14 @@ function renderPlayerInputs(count) {
     const wrapper = document.createElement('div');
     wrapper.className = 'field';
 
-    const label = document.createElement('label');
-    label.setAttribute('for', `player-${index}`);
-    label.textContent = `Giocatore ${index + 1}`;
-
     const input = document.createElement('input');
     input.type = 'text';
-    input.id = `player-${index}`;
-    input.placeholder = 'Nome';
+    input.dataset.index = index;
+    input.placeholder = `Giocatore ${index + 1}`;
     input.maxLength = 18;
     input.value = existing[index] || '';
 
-    wrapper.append(label, input);
+    wrapper.appendChild(input);
     playerList.appendChild(wrapper);
   }
 }
@@ -110,6 +112,7 @@ function showError(target, message) {
 }
 
 function clearError(target) {
+  if (!target) return;
   target.textContent = '';
   target.classList.add('is-hidden');
 }
@@ -138,21 +141,29 @@ function shuffle(array) {
 }
 
 function assignRoles(names, impostorCount) {
-  const indices = shuffle(names.map((_, index) => index));
+  // If names are empty, use placeholders
+  const safeNames = names.map((n, i) => n || `Giocatore ${i + 1}`);
+  const indices = shuffle(safeNames.map((_, index) => index));
   const impostorSet = new Set(indices.slice(0, impostorCount));
-  return names.map((name, index) => ({
+  return safeNames.map((name, index) => ({
     name,
     role: impostorSet.has(index) ? 'impostore' : 'cittadino',
+    seen: false
   }));
 }
 
 function updateRevealScreen() {
   const current = roles[currentIndex];
-  revealInstruction.textContent = `Passa il telefono a ${current.name}. Tocca "Rileva ruolo".`;
+  revealInstruction.textContent = `Passa il dispositivo a ${current.name}`;
   progressCurrent.textContent = currentIndex + 1;
   progressTotal.textContent = roles.length;
+
+  // Progress bar
+  const pct = ((currentIndex + 1) / roles.length) * 100;
+  if (progressFill) progressFill.style.width = `${pct}%`;
+
   nextPlayerButton.textContent =
-    currentIndex === roles.length - 1 ? 'Inizio partita' : 'Giocatore successivo';
+    currentIndex === roles.length - 1 ? 'INIZIO PARTITA' : 'PROSSIMO';
   nextPlayerButton.disabled = true;
 }
 
@@ -185,24 +196,31 @@ function handleSheetClose() {
   sheetContext = null;
 }
 
+// EVENTS
+
 playerCountInput.addEventListener('input', () => {
   const value = clampNumber(
     parseInt(playerCountInput.value, 10),
     minPlayers,
     maxPlayers
   );
+  // Don't force update value immediately to allow typing
+  if (value >= minPlayers && value <= maxPlayers) {
+    renderPlayerInputs(value);
+    syncImpostorMax(value);
+  }
+});
+playerCountInput.addEventListener('change', () => {
+  // Force clamp on blur
+  const value = clampNumber(parseInt(playerCountInput.value, 10), minPlayers, maxPlayers);
   playerCountInput.value = value;
   renderPlayerInputs(value);
   syncImpostorMax(value);
 });
 
+
 impostorCountInput.addEventListener('input', () => {
-  const count = clampNumber(
-    parseInt(impostorCountInput.value, 10),
-    1,
-    Math.max(1, parseInt(playerCountInput.value, 10) - 1)
-  );
-  impostorCountInput.value = count;
+  // Logic check on input
 });
 
 modeInputs.forEach((input) => {
@@ -216,17 +234,19 @@ generateWordButton.addEventListener('click', async () => {
   const prompt = promptInput.value.trim();
 
   if (mode === 'topic' && !topic) {
-    showError(wordError, 'Inserisci un tema per la parola.');
+    showError(wordError, 'Inserisci un tema.');
     return;
   }
 
   if (mode === 'prompt' && !prompt) {
-    showError(wordError, 'Inserisci un prompt per la parola.');
+    showError(wordError, 'Inserisci un prompt.');
     return;
   }
 
   generateWordButton.disabled = true;
-  setWordStatus('Generazione in corso...');
+  setWordStatus('Generazione...');
+
+  if (wordBoxContainer) wordBoxContainer.classList.add('is-hidden');
 
   try {
     const response = await fetch('/api/generate-word', {
@@ -236,7 +256,7 @@ generateWordButton.addEventListener('click', async () => {
     });
 
     if (!response.ok) {
-      throw new Error('Errore nella generazione');
+      throw new Error('Errore API');
     }
 
     const data = await response.json();
@@ -247,13 +267,22 @@ generateWordButton.addEventListener('click', async () => {
     }
 
     generatedWord = cleaned;
-    wordOutput.textContent = cleaned;
-    setWordStatus('Parola pronta');
+
+    // SECRET MODE: Do not show the word
+    wordOutput.textContent = 'TOP SECRET'; // Hidden!
+
+    if (wordBoxContainer) wordBoxContainer.classList.remove('is-hidden');
+    setWordStatus('Generata con successo');
+
+    startRolesButton.disabled = false;
+    startRolesButton.classList.add('is-ready');
+
   } catch (error) {
-    setWordStatus('Nessuna parola generata');
+    console.error(error);
+    setWordStatus('Errore');
     showError(
       wordError,
-      'Non riesco a generare la parola. Riprova tra poco.'
+      'Errore di connessione o AI. Riprova.'
     );
   } finally {
     generateWordButton.disabled = false;
@@ -263,21 +292,16 @@ generateWordButton.addEventListener('click', async () => {
 startRolesButton.addEventListener('click', () => {
   clearError(setupError);
   const names = getPlayerNames();
-  const missing = names.some((name) => !name);
-  const impostorCount = parseInt(impostorCountInput.value, 10);
-
-  if (missing) {
-    showError(setupError, 'Inserisci tutti i nomi dei giocatori.');
-    return;
-  }
+  // We allow empty names now (defaults to Player X)
 
   if (!generatedWord) {
-    showError(setupError, 'Genera la parola prima di iniziare.');
+    showError(setupError, 'Devi prima generare la parola.');
     return;
   }
 
+  const impostorCount = parseInt(impostorCountInput.value, 10);
   if (impostorCount >= names.length) {
-    showError(setupError, 'Gli impostori devono essere meno dei giocatori.');
+    showError(setupError, 'Troppi impostori.');
     return;
   }
 
@@ -285,6 +309,9 @@ startRolesButton.addEventListener('click', () => {
   currentIndex = 0;
   updateRevealScreen();
   setActivePanel(revealPanel);
+
+  // Transition
+  window.scrollTo(0, 0);
 });
 
 revealRoleButton.addEventListener('click', () => {
@@ -292,9 +319,9 @@ revealRoleButton.addEventListener('click', () => {
   if (!current) return;
 
   if (current.role === 'impostore') {
-    openSheet('Impostore', 'Non hai la parola. Osserva e improvvisa.', 'role');
+    openSheet('IL TUO RUOLO', 'IMPOSTORE\n\nNon conosci la parola.\nCerca di non farti scoprire.', 'role');
   } else {
-    openSheet('La parola e', generatedWord, 'role');
+    openSheet('IL TUO RUOLO', `CITTADINO\n\nParola Segreta:\n${generatedWord}`, 'role');
   }
 });
 
@@ -313,8 +340,8 @@ revealImpostorsButton.addEventListener('click', () => {
     .map((entry) => entry.name);
   const list = impostors.length ? impostors.join(', ') : 'Nessuno';
   openSheet(
-    'Impostori',
-    `Impostori: ${list}`,
+    'VERITÀ',
+    `Gli Impostori erano:\n${list}`,
     'impostors'
   );
 });
@@ -327,6 +354,7 @@ scrim.addEventListener('click', () => {
   }
 });
 
+// Init
 renderPlayerInputs(parseInt(playerCountInput.value, 10));
 syncImpostorMax(parseInt(playerCountInput.value, 10));
 updateModeFields();
