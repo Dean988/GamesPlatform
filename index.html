@@ -8,172 +8,193 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Space+Grotesk:wght@400;500;600&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,600&family=Inter:wght@300;400;600&display=swap"
     rel="stylesheet" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
 
 <body>
-  <div class="backdrop" aria-hidden="true"></div>
+  <!-- Background Elements -->
+  <div class="ambient-light"></div>
+  <div class="grid-overlay"></div>
 
-  <header class="site-header">
-    <div class="brand">
-      <span class="brand-dot" aria-hidden="true"></span>
-      <span>IMPOSTORE</span>
+  <main class="app-container">
+
+    <!-- HERO / LANDING -->
+    <section id="landing" class="view is-active">
+      <header class="hero-header">
+        <div class="brand">NANO BANANA</div>
+        <h1 class="title-display">IMPOSTORE</h1>
+        <p class="subtitle">Il party game deduttivo</p>
+      </header>
+
+      <div class="hero-visual-container">
+        <div class="glow-backdrop"></div>
+        <img src="card_banana.png" alt="Friends" class="hero-image" />
+      </div>
+
+      <div class="hero-actions">
+        <button id="btn-enter" class="btn-main">
+          <span class="btn-text">INIZIA PARTITA</span>
+          <span class="btn-icon">→</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- GAME FLOW WRAPPER -->
+    <div id="game-flow" class="view">
+
+      <!-- HEADER COMPACT -->
+      <div class="game-header">
+        <button id="btn-back-home" class="btn-icon-only" aria-label="Torna alla home">←</button>
+        <span class="step-indicator">CONFIGURAZIONE</span>
+      </div>
+
+      <!-- 1. SETUP PANEL -->
+      <section id="setup" class="panel is-visible">
+
+        <div class="input-group">
+          <div class="counter-control">
+            <label>GIOCATORI</label>
+            <input id="player-count" type="number" min="3" max="20" value="4" />
+          </div>
+          <div class="counter-control">
+            <label>IMPOSTORI</label>
+            <input id="impostor-count" type="number" min="1" max="3" value="1" />
+          </div>
+        </div>
+
+        <div id="player-inputs" class="player-grid"></div>
+
+        <div class="divider"></div>
+
+        <div class="mode-selector">
+          <span class="label-small">TIPO PAROLA</span>
+          <div class="switch-container">
+            <input id="mode-auto" type="radio" name="word-mode" value="auto" checked />
+            <label for="mode-auto">RANDOM</label>
+
+            <input id="mode-topic" type="radio" name="word-mode" value="topic" />
+            <label for="mode-topic">TEMA</label>
+
+            <input id="mode-prompt" type="radio" name="word-mode" value="prompt" />
+            <label for="mode-prompt">PROMPT</label>
+          </div>
+        </div>
+
+        <div id="topic-field" class="extra-field is-hidden">
+          <input id="topic-input" type="text" placeholder="Es. Cinema, 007, Pizza" />
+        </div>
+
+        <div id="prompt-field" class="extra-field is-hidden">
+          <textarea id="prompt-input" rows="2" placeholder="Descrivi cosa generare..."></textarea>
+        </div>
+
+        <div class="action-area">
+          <button id="generate-word" class="btn-primary">GENERA TARGET</button>
+          <div id="word-status" class="status-indicator">In attesa</div>
+        </div>
+
+        <p id="word-error" class="error-msg is-hidden"></p>
+
+        <div id="word-box-container" class="target-display is-hidden">
+          <span class="target-label">OBIETTIVO SEGRETO</span>
+          <div class="target-content">
+            <span id="word-output" class="target-word">???</span>
+          </div>
+        </div>
+
+        <button id="start-roles" class="btn-confirm" disabled>DISTRIBUISCI RUOLI</button>
+        <p id="setup-error" class="error-msg is-hidden"></p>
+      </section>
+
+      <!-- 2. REVEAL PANEL -->
+      <section id="reveal" class="panel">
+        <div class="instruction-card">
+          <div class="icon-large">🕵️</div>
+          <h2>IDENTITÀ</h2>
+          <p id="reveal-instruction">Passa il dispositivo</p>
+        </div>
+
+        <div class="action-area-bottom">
+          <button id="reveal-role" class="btn-main">APRI DOSSIER</button>
+          <button id="next-player" class="btn-ghost" disabled>PROSSIMO</button>
+        </div>
+
+        <div class="progress-bar">
+          <div id="progress-fill" class="progress-fill"></div>
+        </div>
+        <div class="progress-text">
+          <span id="progress-current">1</span> / <span id="progress-total">4</span>
+        </div>
+      </section>
+
+      <!-- 3. START PANEL -->
+      <section id="start" class="panel">
+        <div class="start-content">
+          <div class="pulse-ring"></div>
+          <div class="icon-wrapper">🚨</div>
+          <h2>CACCIA APERTA</h2>
+          <p>Discutete e trovate l'infiltrato.</p>
+        </div>
+
+        <button id="reveal-impostors" class="btn-danger">SMASCHERA TUTTI</button>
+      </section>
+
     </div>
-    <nav class="nav">
-      <!-- Minimal Nav -->
-      <a href="#hero">Home</a>
-      <a href="#gameplay">Gioca</a>
-    </nav>
-  </header>
 
-  <main class="page">
-    <!-- HERO SECTION -->
-    <section id="hero" class="hero">
-      <div class="hero-content">
-        <div class="eyebrow">Edizione Nano Banana</div>
-        <h1>Chi è l'Impostore?</h1>
-        <p>
-          Un party game di deduzione e bluff.
-          <br />Genera l'identità segreta e scopri il colpevole.
-        </p>
-        <div class="hero-actions">
-          <a class="btn primary" href="#gameplay">Inizia Partita</a>
-        </div>
-      </div>
-      <div class="hero-visual">
-        <img src="hero_banana.png" alt="Agente Segreto Banana" class="hero-img" />
-      </div>
-    </section>
-
-    <!-- GAME AREA -->
-    <section id="gameplay" class="section gameplay">
-      <div class="game-wrapper">
-
-        <!-- Game Selection Card (Visual Only context) -->
-        <div class="active-game-banner">
-          <img src="card_banana.png" alt="Card Banana" class="small-icon" />
-          <span>Stai giocando a: <strong>Impostore</strong></span>
-        </div>
-
-        <!-- STACK: The functional panels -->
-        <div class="stack">
-
-          <!-- 1. SETUP -->
-          <section id="setup" class="panel is-active">
-            <div class="panel-header">
-              <h2>Configurazione</h2>
-            </div>
-
-            <div class="grid-2">
-              <div class="field">
-                <label for="player-count">Giocatori</label>
-                <input id="player-count" type="number" min="3" max="20" value="4" />
-              </div>
-              <div class="field">
-                <label for="impostor-count">Impostori</label>
-                <input id="impostor-count" type="number" min="1" max="3" value="1" />
-              </div>
-            </div>
-
-            <div id="player-list" class="player-list"></div>
-
-            <div class="field">
-              <label>Parola Segreta</label>
-              <div class="segmented">
-                <input id="mode-auto" type="radio" name="word-mode" value="auto" checked />
-                <label for="mode-auto">Random</label>
-
-                <input id="mode-topic" type="radio" name="word-mode" value="topic" />
-                <label for="mode-topic">Tema</label>
-
-                <input id="mode-prompt" type="radio" name="word-mode" value="prompt" />
-                <label for="mode-prompt">Prompt</label>
-              </div>
-            </div>
-
-            <div id="topic-field" class="field is-hidden">
-              <input id="topic-input" type="text" placeholder="Es: Cucina, Sport..." />
-            </div>
-
-            <div id="prompt-field" class="field is-hidden">
-              <textarea id="prompt-input" rows="2" placeholder="Cosa vuoi generare?"></textarea>
-            </div>
-
-            <div class="actions-col">
-              <button id="generate-word" class="btn primary full-width">Genera Target</button>
-              <span id="word-status" class="status-text">in attesa</span>
-            </div>
-
-            <p id="word-error" class="error-text is-hidden"></p>
-
-            <div class="word-box is-hidden" id="word-box-container">
-              <span class="word-label">TARGET</span>
-              <span id="word-output" class="word-output">???</span>
-            </div>
-
-            <div class="actions-col">
-              <button id="start-roles" class="btn secondary full-width">Distribuisci Ruoli</button>
-              <span id="setup-error" class="error-text is-hidden"></span>
-            </div>
-          </section>
-
-          <!-- 2. REVEAL -->
-          <section id="reveal" class="panel">
-            <div class="panel-header text-center">
-              <h2>Identità</h2>
-              <p id="reveal-instruction">Passa al prossimo agente</p>
-            </div>
-
-            <div class="reveal-content">
-              <div class="role-icon">🕵️</div>
-              <button id="reveal-role" class="btn primary full-width">Apri Dossier</button>
-              <button id="next-player" class="btn ghost full-width" disabled>Prossimo</button>
-            </div>
-
-            <div class="progress-indicator">
-              Agente <span id="progress-current">1</span> / <span id="progress-total">4</span>
-            </div>
-          </section>
-
-          <!-- 3. START -->
-          <section id="start" class="panel">
-            <div class="panel-header text-center">
-              <h2>Caccia Aperta</h2>
-              <p>Discutete. Chi sta mentendo?</p>
-            </div>
-
-            <div class="start-icon">🚨</div>
-
-            <button id="reveal-impostors" class="btn primary full-width">Smaschera Impostori</button>
-          </section>
-
-        </div>
-      </div>
-    </section>
   </main>
 
+  <!-- SHEET OVERLAY -->
   <div id="scrim" class="scrim" hidden></div>
   <div id="sheet" class="sheet" aria-hidden="true">
     <div class="sheet-handle"></div>
-    <h3 id="sheet-title">Titolo</h3>
-    <p id="sheet-body">Contenuto</p>
-    <button id="sheet-close" class="btn primary full-width">Chiudi</button>
+    <div class="sheet-body-content">
+      <h3 id="sheet-title">RUOLO</h3>
+      <p id="sheet-body">...</p>
+    </div>
+    <button id="sheet-close" class="btn-close">CHIUDI DOSSIER</button>
   </div>
 
-  <!-- Script Logic (Assuming app.js is compatible with these IDs) -->
   <script src="/app.js"></script>
   <script>
-    // Inline quick fix to show word box only when generated
-    const wb = document.getElementById('word-box-container');
-    const wo = document.getElementById('word-output');
-    const observer = new MutationObserver(() => {
-      if (wo.textContent !== '---' && wo.textContent !== '???') {
-        wb.classList.remove('is-hidden');
+    // Simple Navigation Logic for the transitions
+    const landing = document.getElementById('landing');
+    const gameFlow = document.getElementById('game-flow');
+    const btnEnter = document.getElementById('btn-enter');
+    const btnBack = document.getElementById('btn-back-home');
+
+    btnEnter.addEventListener('click', () => {
+      landing.classList.remove('is-active');
+      landing.style.display = 'none';
+      gameFlow.style.display = 'flex';
+      setTimeout(() => gameFlow.classList.add('is-active'), 10);
+    });
+
+    btnBack.addEventListener('click', () => {
+      gameFlow.classList.remove('is-active');
+      gameFlow.style.display = 'none';
+      landing.style.display = 'flex';
+      setTimeout(() => landing.classList.add('is-active'), 10);
+    });
+
+    // Enable Start Button only when word is ready
+    const wordOut = document.getElementById('word-output');
+    const startBtn = document.getElementById('start-roles');
+    const box = document.getElementById('word-box-container');
+
+    const obs = new MutationObserver(() => {
+      const txt = wordOut.textContent;
+      if (txt !== '???' && txt !== '---' && txt.length > 1) {
+        box.classList.remove('is-hidden');
+        startBtn.disabled = false;
+        startBtn.classList.add('is-ready');
+      } else {
+        startBtn.disabled = true;
+        startBtn.classList.remove('is-ready');
       }
     });
-    observer.observe(wo, { childList: true, subtree: true, characterData: true });
+    obs.observe(wordOut, { childList: true, characterData: true, subtree: true });
   </script>
 </body>
 
