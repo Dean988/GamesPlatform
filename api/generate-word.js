@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const modelName = 'gemini-2.5-flash-lite';
+const modelName = 'gemini-2.5-flash';
 
 function buildPrompt(mode, topic, prompt) {
   // Base instructions to ensure variety and prevent repetition
@@ -92,6 +92,6 @@ export default async function handler(req, res) {
     res.status(200).json({ word: cleaned });
   } catch (error) {
     console.error('Gemini API Error:', error);
-    res.status(500).json({ error: 'Generation failed' });
+    res.status(500).json({ error: 'Generation failed', details: error.message });
   }
 }
