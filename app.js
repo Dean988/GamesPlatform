@@ -4,7 +4,7 @@ const startPanel = document.getElementById('start');
 
 const playerCountInput = document.getElementById('player-count');
 const impostorCountInput = document.getElementById('impostor-count');
-const playerList = document.getElementById('player-inputs'); // UPDATED ID based on new HTML
+const playerList = document.getElementById('player-inputs');
 
 const modeInputs = Array.from(document.querySelectorAll('input[name="word-mode"]'));
 const topicField = document.getElementById('topic-field');
@@ -35,6 +35,11 @@ const sheet = document.getElementById('sheet');
 const sheetTitle = document.getElementById('sheet-title');
 const sheetBody = document.getElementById('sheet-body');
 const sheetClose = document.getElementById('sheet-close');
+
+const restartGameButton = document.getElementById('restart-game');
+const btnBack = document.getElementById('btn-back-home');
+const landing = document.getElementById('landing');
+const gameFlow = document.getElementById('game-flow');
 
 const panels = [setupPanel, revealPanel, startPanel];
 const minPlayers = 3;
@@ -141,7 +146,6 @@ function shuffle(array) {
 }
 
 function assignRoles(names, impostorCount) {
-  // If names are empty, use placeholders
   const safeNames = names.map((n, i) => n || `Giocatore ${i + 1}`);
   const indices = shuffle(safeNames.map((_, index) => index));
   const impostorSet = new Set(indices.slice(0, impostorCount));
@@ -158,7 +162,6 @@ function updateRevealScreen() {
   progressCurrent.textContent = currentIndex + 1;
   progressTotal.textContent = roles.length;
 
-  // Progress bar
   const pct = ((currentIndex + 1) / roles.length) * 100;
   if (progressFill) progressFill.style.width = `${pct}%`;
 
@@ -196,7 +199,27 @@ function handleSheetClose() {
   sheetContext = null;
 }
 
-// EVENTS
+// RESET FUNCTION
+function resetGame() {
+  generatedWord = '';
+  roles = [];
+  currentIndex = 0;
+  sheetContext = null;
+
+  // Reset UI
+  if (wordOutput) wordOutput.textContent = '???';
+  if (wordBoxContainer) wordBoxContainer.classList.add('is-hidden');
+  setWordStatus('In attesa');
+
+  if (startRolesButton) {
+    startRolesButton.disabled = true;
+    startRolesButton.classList.remove('is-ready');
+  }
+
+  setActivePanel(setupPanel);
+}
+
+// HANDLERS
 
 playerCountInput.addEventListener('input', () => {
   const value = clampNumber(
@@ -204,24 +227,13 @@ playerCountInput.addEventListener('input', () => {
     minPlayers,
     maxPlayers
   );
-  // Don't force update value immediately to allow typing
   if (value >= minPlayers && value <= maxPlayers) {
     renderPlayerInputs(value);
     syncImpostorMax(value);
   }
 });
-playerCountInput.addEventListener('change', () => {
-  // Force clamp on blur
-  const value = clampNumber(parseInt(playerCountInput.value, 10), minPlayers, maxPlayers);
-  playerCountInput.value = value;
-  renderPlayerInputs(value);
-  syncImpostorMax(value);
-});
 
-
-impostorCountInput.addEventListener('input', () => {
-  // Logic check on input
-});
+impostorCountInput.addEventListener('input', () => { });
 
 modeInputs.forEach((input) => {
   input.addEventListener('change', updateModeFields);
@@ -267,9 +279,7 @@ generateWordButton.addEventListener('click', async () => {
     }
 
     generatedWord = cleaned;
-
-    // SECRET MODE: Do not show the word
-    wordOutput.textContent = 'TOP SECRET'; // Hidden!
+    wordOutput.textContent = 'TOP SECRET';
 
     if (wordBoxContainer) wordBoxContainer.classList.remove('is-hidden');
     setWordStatus('Generata con successo');
@@ -280,10 +290,7 @@ generateWordButton.addEventListener('click', async () => {
   } catch (error) {
     console.error(error);
     setWordStatus('Errore');
-    showError(
-      wordError,
-      'Errore di connessione o AI. Riprova.'
-    );
+    showError(wordError, 'Errore di connessione o AI.');
   } finally {
     generateWordButton.disabled = false;
   }
@@ -292,10 +299,9 @@ generateWordButton.addEventListener('click', async () => {
 startRolesButton.addEventListener('click', () => {
   clearError(setupError);
   const names = getPlayerNames();
-  // We allow empty names now (defaults to Player X)
 
   if (!generatedWord) {
-    showError(setupError, 'Devi prima generare la parola.');
+    showError(setupError, 'Devi generare la parola.');
     return;
   }
 
@@ -309,8 +315,6 @@ startRolesButton.addEventListener('click', () => {
   currentIndex = 0;
   updateRevealScreen();
   setActivePanel(revealPanel);
-
-  // Transition
   window.scrollTo(0, 0);
 });
 
@@ -339,19 +343,22 @@ revealImpostorsButton.addEventListener('click', () => {
     .filter((entry) => entry.role === 'impostore')
     .map((entry) => entry.name);
   const list = impostors.length ? impostors.join(', ') : 'Nessuno';
-  openSheet(
-    'VERITÀ',
-    `Gli Impostori erano:\n${list}`,
-    'impostors'
-  );
+  openSheet('VERITÀ', `Gli Impostori erano:\n${list}`, 'impostors');
+});
+
+if (restartGameButton) restartGameButton.addEventListener('click', resetGame);
+
+if (btnBack) btnBack.addEventListener('click', () => {
+  resetGame();
+  gameFlow.classList.remove('is-active');
+  gameFlow.style.display = 'none';
+  landing.style.display = 'flex';
+  setTimeout(() => landing.classList.add('is-active'), 10);
 });
 
 sheetClose.addEventListener('click', handleSheetClose);
-
 scrim.addEventListener('click', () => {
-  if (sheetContext) {
-    handleSheetClose();
-  }
+  if (sheetContext) handleSheetClose();
 });
 
 // Init

@@ -4,13 +4,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-  <title>Impostore | Nano Banana</title>
+  <title>Impostore</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
     href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,600&family=Inter:wght@300;400;600&display=swap"
     rel="stylesheet" />
   <link rel="stylesheet" href="/styles.css" />
+  <!-- Preload Hero Image -->
+  <link rel="preload" as="image" href="friends.png" fetchpriority="high">
 </head>
 
 <body>
@@ -23,14 +25,14 @@
     <!-- HERO / LANDING -->
     <section id="landing" class="view is-active">
       <header class="hero-header">
-        <div class="brand">NANO BANANA</div>
+        <!-- Removed Brand -->
         <h1 class="title-display">IMPOSTORE</h1>
         <p class="subtitle">Il party game deduttivo</p>
       </header>
 
       <div class="hero-visual-container">
         <div class="glow-backdrop"></div>
-        <img src="friends.png" alt="Friends" class="hero-image" />
+        <img src="friends.png" alt="Friends" class="hero-image" fetchpriority="high" />
       </div>
 
       <div class="hero-actions">
@@ -46,7 +48,7 @@
 
       <!-- HEADER COMPACT -->
       <div class="game-header">
-        <button id="btn-back-home" class="btn-icon-only" aria-label="Torna alla home">←</button>
+        <button id="btn-back-home" class="btn-icon-only" aria-label="Torna alla home">Home</button>
         <span class="step-indicator">CONFIGURAZIONE</span>
       </div>
 
@@ -139,6 +141,7 @@
         </div>
 
         <button id="reveal-impostors" class="btn-danger">SMASCHERA TUTTI</button>
+        <button id="restart-game" class="btn-ghost" style="margin-top: 20px;">NUOVA PARTITA</button>
       </section>
 
     </div>
@@ -171,13 +174,6 @@
       setTimeout(() => gameFlow.classList.add('is-active'), 10);
     });
 
-    btnBack.addEventListener('click', () => {
-      gameFlow.classList.remove('is-active');
-      gameFlow.style.display = 'none';
-      landing.style.display = 'flex';
-      setTimeout(() => landing.classList.add('is-active'), 10);
-    });
-
     // Enable Start Button only when word is ready
     const wordOut = document.getElementById('word-output');
     const startBtn = document.getElementById('start-roles');
@@ -185,13 +181,8 @@
 
     const obs = new MutationObserver(() => {
       const txt = wordOut.textContent;
-      if (txt !== '???' && txt !== '---' && txt.length > 1) {
-        box.classList.remove('is-hidden');
-        startBtn.disabled = false;
-        startBtn.classList.add('is-ready');
-      } else {
-        startBtn.disabled = true;
-        startBtn.classList.remove('is-ready');
+      if (txt !== '???' && txt !== '---' && txt.length > 2 && txt !== '') {
+        // Logic handled in app.js largely, but this ensures visibility
       }
     });
     obs.observe(wordOut, { childList: true, characterData: true, subtree: true });
