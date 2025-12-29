@@ -1,0 +1,8 @@
+{
+  "name": "impostore",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@google/generative-ai": "^0.21.0"
+  }
+}
