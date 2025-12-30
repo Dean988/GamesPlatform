@@ -459,9 +459,6 @@ document.addEventListener('DOMContentLoaded', () => {
             players: [],
             history: '',
             score: 0,
-            lives: START_LIVES,
-            maxLives: START_LIVES,
-            damageShield: 0,
             scoreMultiplier: 1,
             scoreBoostTurns: 0,
             peekTokens: 0,
@@ -469,7 +466,8 @@ document.addEventListener('DOMContentLoaded', () => {
             itemPools: initItemPools(),
             currentOptions: [],
             pendingChoices: [],
-            activePlayerIndex: 0,
+            choiceOrder: [],
+            activeChoiceIndex: 0,
             waitingForResolution: false,
             isRolling: false,
             isGameOver: false
@@ -479,6 +477,28 @@ document.addEventListener('DOMContentLoaded', () => {
     function formatSigned(value) {
         if (!value) return '0';
         return value > 0 ? `+${value}` : `${value}`;
+    }
+
+    function getLifeTotals() {
+        const totals = gameState.players.reduce(
+            (acc, player) => {
+                acc.current += toNumber(player.life, 0);
+                acc.max += toNumber(player.maxLife, 0);
+                if (toNumber(player.life, 0) > 0) acc.alive += 1;
+                return acc;
+            },
+            { current: 0, max: 0, alive: 0 }
+        );
+        totals.total = gameState.players.length;
+        return totals;
+    }
+
+    function getAlivePlayerIndices() {
+        const indices = [];
+        gameState.players.forEach((player, index) => {
+            if (toNumber(player.life, 0) > 0) indices.push(index);
+        });
+        return indices;
     }
 
     // ELEMENTS
@@ -593,7 +613,13 @@ document.addEventListener('DOMContentLoaded', () => {
         gameState.players = [];
         for (let i = 0; i < pCount; i++) {
             const name = document.getElementById(`surv-p-${i}`).value.trim() || `Sopravvissuto ${i + 1}`;
-            gameState.players.push({ name, inventory: [] });
+            gameState.players.push({
+                name,
+                inventory: [],
+                life: START_LIVES,
+                maxLife: START_LIVES,
+                shield: 0
+            });
         }
         gameState.maxTurns = parseInt(inpSurvTurns.value, 10) || 5;
         gameState.turn = 1;
@@ -619,7 +645,8 @@ document.addEventListener('DOMContentLoaded', () => {
         turnDisplay.textContent = `TURNO ${gameState.turn} / ${gameState.maxTurns}`;
         scoreDisplay.textContent = `PUNTI: ${gameState.score}`;
         if (livesDisplay) {
-            livesDisplay.textContent = `VITE: ${gameState.lives} / ${gameState.maxLives}`;
+            const lifeTotals = getLifeTotals();
+            livesDisplay.textContent = `VITE TOT: ${lifeTotals.current} / ${lifeTotals.max}`;
         }
         renderInventories();
         updateChoiceStatus();
@@ -630,11 +657,36 @@ document.addEventListener('DOMContentLoaded', () => {
         inventoryContainer.innerHTML = '';
         gameState.players.forEach((p, pIndex) => {
             const pDiv = document.createElement('div');
-            pDiv.className = 'surv-player-inv';
+            const isAlive = toNumber(p.life, 0) > 0;
+            pDiv.className = `surv-player-inv${isAlive ? '' : ' is-down'}`;
+
+            const header = document.createElement('div');
+            header.className = 'surv-player-head';
 
             const nameTitle = document.createElement('div');
             nameTitle.className = 'surv-p-name';
             nameTitle.textContent = p.name;
+
+            const lifeWrap = document.createElement('div');
+            lifeWrap.className = 'surv-life-wrap';
+
+            const lifeBadge = document.createElement('div');
+            lifeBadge.className = 'surv-life-badge';
+            lifeBadge.textContent = `${toNumber(p.life, 0)}/${toNumber(p.maxLife, 0)}`;
+
+            const dots = document.createElement('div');
+            dots.className = 'surv-life-dots';
+            const maxLife = Math.max(0, toNumber(p.maxLife, 0));
+            for (let i = 0; i < maxLife; i += 1) {
+                const dot = document.createElement('span');
+                dot.className = `life-dot${i < toNumber(p.life, 0) ? ' is-full' : ''}`;
+                dots.appendChild(dot);
+            }
+
+            lifeWrap.appendChild(lifeBadge);
+            lifeWrap.appendChild(dots);
+            header.appendChild(nameTitle);
+            header.appendChild(lifeWrap);
 
             const itemsDiv = document.createElement('div');
             itemsDiv.className = 'surv-items-row';
@@ -653,7 +705,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
 
-            pDiv.appendChild(nameTitle);
+            pDiv.appendChild(header);
             pDiv.appendChild(itemsDiv);
             inventoryContainer.appendChild(pDiv);
         });
@@ -664,7 +716,8 @@ document.addEventListener('DOMContentLoaded', () => {
         questionText.textContent = message || 'Analisi in corso...';
         if (choicePlayerLabel) choicePlayerLabel.textContent = 'Elaborazione...';
         if (choiceProgressLabel) {
-            choiceProgressLabel.textContent = `${gameState.pendingChoices.length}/${gameState.players.length}`;
+            const totalChoices = gameState.choiceOrder.length;
+            choiceProgressLabel.textContent = `${gameState.pendingChoices.length}/${totalChoices}`;
         }
     }
 
@@ -700,12 +753,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateChoiceStatus() {
         if (!choicePlayerLabel || !choiceProgressLabel) return;
-        const total = gameState.players.length;
+        const total = gameState.choiceOrder.length;
         const done = gameState.pendingChoices.length;
         choiceProgressLabel.textContent = `${done}/${total}`;
 
+        if (total === 0) {
+            choicePlayerLabel.textContent = 'Nessun sopravvissuto attivo';
+            return;
+        }
+
         if (done < total) {
-            const current = gameState.players[gameState.activePlayerIndex];
+            const currentIndex = gameState.choiceOrder[gameState.activeChoiceIndex];
+            const current = gameState.players[currentIndex];
             choicePlayerLabel.textContent = `Risponde: ${current ? current.name : '--'}`;
         } else {
             choicePlayerLabel.textContent = 'Elaborazione...';
@@ -717,10 +776,12 @@ document.addEventListener('DOMContentLoaded', () => {
         choiceList.innerHTML = '';
         gameState.players.forEach((player, idx) => {
             const choice = gameState.pendingChoices.find((entry) => entry.playerIndex === idx);
+            const isAlive = toNumber(player.life, 0) > 0;
             const pill = document.createElement('div');
-            pill.className = `surv-choice-pill${choice ? ' is-done' : ''}`;
+            pill.className = `surv-choice-pill${choice ? ' is-done' : ''}${isAlive ? '' : ' is-down'}`;
             const rollTag = choice && choice.requiresRoll ? `<span class="pill-roll">d20 ${choice.roll}</span>` : '';
-            pill.innerHTML = `<span class="pill-name">${player.name}</span><span class="pill-meta"><span class="pill-choice">${choice ? choice.optionId : '--'}</span>${rollTag}</span>`;
+            const choiceLabel = isAlive ? (choice ? choice.optionId : '--') : 'K.O.';
+            pill.innerHTML = `<span class="pill-name">${player.name}</span><span class="pill-meta"><span class="pill-choice">${choiceLabel}</span>${isAlive ? rollTag : ''}</span>`;
             choiceList.appendChild(pill);
         });
     }
@@ -750,13 +811,19 @@ document.addEventListener('DOMContentLoaded', () => {
     function startChoicePhase(question, options) {
         gameState.currentOptions = Array.isArray(options) ? options : [];
         gameState.pendingChoices = [];
-        gameState.activePlayerIndex = 0;
+        gameState.choiceOrder = getAlivePlayerIndices();
+        gameState.activeChoiceIndex = 0;
         gameState.waitingForResolution = false;
 
         questionText.textContent = question || 'Decisione richiesta.';
         renderOptions(gameState.currentOptions);
         updateChoiceStatus();
         renderChoiceList();
+
+        if (gameState.choiceOrder.length === 0) {
+            questionText.textContent = 'Nessun sopravvissuto attivo.';
+            optionsGrid.innerHTML = '';
+        }
     }
 
     function lockOptions() {
@@ -768,7 +835,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function handleOptionClick(option, index) {
         if (gameState.waitingForResolution || gameState.isRolling) return;
-        const playerIndex = gameState.activePlayerIndex;
+        const playerIndex = gameState.choiceOrder[gameState.activeChoiceIndex];
         const player = gameState.players[playerIndex];
         if (!player) return;
 
@@ -794,12 +861,12 @@ document.addEventListener('DOMContentLoaded', () => {
             roll,
             rollDC
         });
-        gameState.activePlayerIndex += 1;
+        gameState.activeChoiceIndex += 1;
 
         updateChoiceStatus();
         renderChoiceList();
 
-        const isLastChoice = gameState.activePlayerIndex >= gameState.players.length;
+        const isLastChoice = gameState.activeChoiceIndex >= gameState.choiceOrder.length;
         if (!isLastChoice) {
             setOptionsDisabled(false);
         } else {
@@ -818,7 +885,46 @@ document.addEventListener('DOMContentLoaded', () => {
             .join(', ');
     }
 
-    function applyItemRewards(rewards) {
+    function findPlayerIndexByName(name) {
+        if (!name) return -1;
+        const lower = name.toString().toLowerCase();
+        return gameState.players.findIndex((player) => player.name.toLowerCase() === lower);
+    }
+
+    function resolveOutcomePlayerIndex(outcome) {
+        if (!outcome) return null;
+        if (gameState.players.length === 0) return null;
+        if (Number.isInteger(outcome.playerIndex)) {
+            return clampNumber(outcome.playerIndex, 0, gameState.players.length - 1);
+        }
+        const name = outcome.player || outcome.playerName;
+        if (typeof name === 'string') {
+            const byName = findPlayerIndexByName(name);
+            if (byName >= 0) return byName;
+        }
+        return null;
+    }
+
+    function resolveRewardTarget(reward, fallbackIndex) {
+        if (gameState.players.length === 0) return -1;
+        if (Number.isInteger(reward?.targetIndex)) {
+            return clampNumber(reward.targetIndex, 0, gameState.players.length - 1);
+        }
+        if (typeof reward?.player === 'string') {
+            const byName = findPlayerIndexByName(reward.player);
+            if (byName >= 0) return byName;
+        }
+        if (typeof reward?.target === 'string') {
+            const byName = findPlayerIndexByName(reward.target);
+            if (byName >= 0) return byName;
+        }
+        if (Number.isInteger(fallbackIndex)) {
+            return clampNumber(fallbackIndex, 0, gameState.players.length - 1);
+        }
+        return Math.floor(Math.random() * gameState.players.length);
+    }
+
+    function applyItemRewards(rewards, fallbackIndex = null) {
         const gained = [];
         if (!Array.isArray(rewards)) return gained;
 
@@ -830,36 +936,72 @@ document.addEventListener('DOMContentLoaded', () => {
                     rarity = upgradeRarity(rarity, 1);
                     gameState.itemLuck -= 1;
                 }
-                const targetIndex = Math.floor(Math.random() * gameState.players.length);
-                const item = grantItemToPlayer(targetIndex, rarity);
-                if (item) gained.push(item);
+                const targetIndex = resolveRewardTarget(reward, fallbackIndex);
+                if (targetIndex >= 0) {
+                    const item = grantItemToPlayer(targetIndex, rarity);
+                    if (item) gained.push(item);
+                }
             }
         });
         return gained;
     }
 
     function applyTurnOutcome(data, choices) {
-        const narrative = data.narrative || 'Sistema operativo attivo.';
-        const scoreDelta = toNumber(data.scoreDelta, 0);
-        const lifeDelta = toNumber(data.lifeDelta, 0);
-        const appliedScore = applyScoreDelta(scoreDelta, true);
-        const appliedLife = applyLifeDelta(lifeDelta);
-        const itemsFound = applyItemRewards(data.itemRewards);
+        const baseNarrative = data.narrative || 'Sistema operativo attivo.';
+        const playerOutcomes = Array.isArray(data.playerOutcomes) ? data.playerOutcomes : [];
+        const narrativeLines = [baseNarrative];
+
+        let totalScoreDelta = toNumber(data.scoreDelta, 0);
+        let totalLifeDelta = 0;
+        let itemsFound = [];
+
+        if (playerOutcomes.length) {
+            playerOutcomes.forEach((outcome) => {
+                let playerIndex = resolveOutcomePlayerIndex(outcome);
+                if (playerIndex === null && outcome?.choiceId) {
+                    const matched = choices.find((entry) => entry.optionId === outcome.choiceId);
+                    if (matched) playerIndex = matched.playerIndex;
+                }
+                const playerName = playerIndex !== null ? gameState.players[playerIndex]?.name : outcome?.player;
+                if (outcome?.narrative) {
+                    const line = playerName ? `${playerName}: ${outcome.narrative}` : outcome.narrative;
+                    narrativeLines.push(line);
+                }
+                totalScoreDelta += toNumber(outcome?.scoreDelta, 0);
+                if (playerIndex !== null) {
+                    totalLifeDelta += applyLifeDelta(outcome?.lifeDelta, playerIndex);
+                    itemsFound = itemsFound.concat(applyItemRewards(outcome?.itemRewards, playerIndex));
+                }
+            });
+        }
+
+        const globalLifeDelta = toNumber(data.lifeDelta, 0);
+        if (globalLifeDelta) {
+            totalLifeDelta += applyLifeDeltaToAll(globalLifeDelta);
+        }
+
+        if (Array.isArray(data.itemRewards) && data.itemRewards.length) {
+            itemsFound = itemsFound.concat(applyItemRewards(data.itemRewards));
+        }
+
+        const appliedScore = applyScoreDelta(totalScoreDelta, true);
 
         const outcomeBits = [];
         if (appliedScore !== 0) outcomeBits.push(`Punti ${formatSigned(appliedScore)}`);
-        if (appliedLife !== 0) outcomeBits.push(`Vite ${formatSigned(appliedLife)}`);
+        if (totalLifeDelta !== 0) outcomeBits.push(`Vite ${formatSigned(totalLifeDelta)}`);
         if (itemsFound.length) outcomeBits.push(`Oggetti +${itemsFound.length}`);
 
+        const narrativeBlock = narrativeLines.filter(Boolean).join('\n');
         const extra = outcomeBits.length ? `\n${outcomeBits.join(' | ')}` : '';
-        narrativeText.textContent = `${narrative}${extra}`;
-        const ttsContext = buildTtsContext(scoreDelta, lifeDelta, itemsFound, choices);
-        speak(narrative, ttsContext);
+        narrativeText.textContent = `${narrativeBlock}${extra}`;
+        const ttsContext = buildTtsContext(appliedScore, totalLifeDelta, itemsFound, choices);
+        speak(narrativeBlock, ttsContext);
 
         if (choices.length) {
             gameState.history += `\nSCELTE TURNO ${gameState.turn}: ${summarizeChoices(choices)}`;
         }
-        gameState.history += `\nESITO TURNO ${gameState.turn}: ${narrative}${outcomeBits.length ? ' | ' + outcomeBits.join(', ') : ''}`;
+        const historyLine = outcomeBits.length ? `${narrativeBlock} | ${outcomeBits.join(', ')}` : narrativeBlock;
+        gameState.history += `\nESITO TURNO ${gameState.turn}: ${historyLine}`;
     }
 
     async function requestTurnOutcome(choices) {
@@ -873,8 +1015,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     players: gameState.players,
                     turn: gameState.turn,
                     maxTurns: gameState.maxTurns,
-                    lives: gameState.lives,
-                    maxLives: gameState.maxLives,
+                    lives: getLifeTotals().current,
+                    maxLives: getLifeTotals().max,
                     choices,
                     history: gameState.history
                 })
@@ -888,7 +1030,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const resolvingTurn = choices.length > 0;
             const reachedMaxTurns = resolvingTurn && gameState.turn >= gameState.maxTurns;
 
-            if (data.isGameOver || gameState.lives <= 0 || reachedMaxTurns) {
+            const lifeTotals = getLifeTotals();
+            const allDead = lifeTotals.total > 0 && lifeTotals.alive === 0;
+            if (data.isGameOver || allDead || reachedMaxTurns) {
                 endGame(data);
                 return;
             }
@@ -908,19 +1052,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function endGame(data) {
         showPanel(sectionResult);
-        const livesLine = `Vite residue: ${gameState.lives} / ${gameState.maxLives}`;
+        const lifeTotals = getLifeTotals();
+        const livesLine = `Vite residue: ${lifeTotals.current} / ${lifeTotals.max}`;
         document.getElementById('surv-end-msg').textContent = `Punteggio Finale: ${gameState.score}\n${livesLine}\n\n${data.narrative || ''}`;
         speak(`Gioco terminato. ${data.narrative || ''}`, {
             isGameOver: true,
-            lives: gameState.lives,
-            maxLives: gameState.maxLives,
+            lives: lifeTotals.current,
+            maxLives: lifeTotals.max,
             score: gameState.score,
             turn: gameState.turn,
             maxTurns: gameState.maxTurns
         });
         if (choicePlayerLabel) choicePlayerLabel.textContent = 'Missione conclusa';
         if (choiceProgressLabel) {
-            choiceProgressLabel.textContent = `${gameState.players.length}/${gameState.players.length}`;
+            const lifeTotals = getLifeTotals();
+            choiceProgressLabel.textContent = `${lifeTotals.alive}/${lifeTotals.total}`;
         }
         if (choiceList) choiceList.innerHTML = '';
         optionsGrid.innerHTML = '';
@@ -1010,19 +1156,32 @@ document.addEventListener('DOMContentLoaded', () => {
         closeItemPanel();
     }
 
-    function applyLifeDelta(delta) {
+    function applyLifeDelta(delta, playerIndex) {
         const change = toNumber(delta, 0);
         if (!change) return 0;
+        const player = gameState.players[playerIndex];
+        if (!player) return 0;
         let adjusted = change;
 
-        if (adjusted < 0 && gameState.damageShield > 0) {
-            const absorb = Math.min(gameState.damageShield, Math.abs(adjusted));
-            gameState.damageShield -= absorb;
+        if (adjusted < 0 && toNumber(player.shield, 0) > 0) {
+            const absorb = Math.min(toNumber(player.shield, 0), Math.abs(adjusted));
+            player.shield = toNumber(player.shield, 0) - absorb;
             adjusted += absorb;
         }
 
-        gameState.lives = clampNumber(gameState.lives + adjusted, 0, gameState.maxLives);
+        player.life = clampNumber(toNumber(player.life, 0) + adjusted, 0, toNumber(player.maxLife, 0));
         return adjusted;
+    }
+
+    function applyLifeDeltaToAll(delta) {
+        if (!delta) return 0;
+        let total = 0;
+        gameState.players.forEach((player, index) => {
+            if (toNumber(player.life, 0) > 0 || delta > 0) {
+                total += applyLifeDelta(delta, index);
+            }
+        });
+        return total;
     }
 
     function applyScoreDelta(delta, useMultiplier = false) {
@@ -1039,14 +1198,16 @@ document.addEventListener('DOMContentLoaded', () => {
         return applied;
     }
 
-    function adjustMaxLives(delta) {
+    function adjustMaxLives(delta, playerIndex) {
         const change = toNumber(delta, 0);
         if (!change) return 0;
-        const previous = gameState.maxLives;
-        gameState.maxLives = clampNumber(previous + change, START_LIVES, MAX_LIVES_LIMIT);
-        const gained = gameState.maxLives - previous;
+        const player = gameState.players[playerIndex];
+        if (!player) return 0;
+        const previous = toNumber(player.maxLife, 0);
+        player.maxLife = clampNumber(previous + change, START_LIVES, MAX_LIVES_LIMIT);
+        const gained = toNumber(player.maxLife, 0) - previous;
         if (gained > 0) {
-            gameState.lives = clampNumber(gameState.lives + gained, 0, gameState.maxLives);
+            player.life = clampNumber(toNumber(player.life, 0) + gained, 0, toNumber(player.maxLife, 0));
         }
         return gained;
     }
@@ -1083,18 +1244,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function applyAction(action, ownerIndex) {
         if (!action || !action.type) return;
+        const owner = gameState.players[ownerIndex];
         switch (action.type) {
             case 'life':
-                applyLifeDelta(action.delta);
+                applyLifeDelta(action.delta, ownerIndex);
                 break;
             case 'maxLife':
-                adjustMaxLives(action.delta);
+                adjustMaxLives(action.delta, ownerIndex);
                 break;
             case 'score':
                 applyScoreDelta(action.delta);
                 break;
             case 'shield':
-                gameState.damageShield += toNumber(action.points, 0);
+                if (owner) {
+                    owner.shield = toNumber(owner.shield, 0) + toNumber(action.points, 0);
+                }
                 break;
             case 'boost':
                 setScoreBoost(action.multiplier, action.turns);
@@ -1131,6 +1295,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function grantItemToPlayer(index, rarity) {
+        if (!gameState.players[index]) return null;
         const item = drawItemFromPool(rarity);
         if (!item) return null;
         gameState.players[index].inventory.push(item);
@@ -1195,11 +1360,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function buildTtsContext(scoreDelta, lifeDelta, itemsFound, choices) {
+        const lifeTotals = getLifeTotals();
         return {
             turn: gameState.turn,
             maxTurns: gameState.maxTurns,
-            lives: gameState.lives,
-            maxLives: gameState.maxLives,
+            lives: lifeTotals.current,
+            maxLives: lifeTotals.max,
             score: gameState.score,
             scoreDelta,
             lifeDelta,
@@ -1237,6 +1403,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const mimeType = data.mimeType || 'audio/wav';
             ttsAudio = new Audio(`data:${mimeType};base64,${data.audio}`);
             ttsAudio.preload = 'auto';
+            ttsAudio.volume = 1;
+            ttsAudio.playsInline = true;
             ttsAudio.play().catch((error) => {
                 console.error('TTS play failed', error);
             });

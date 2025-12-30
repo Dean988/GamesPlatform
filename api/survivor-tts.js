@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 
 const modelName = 'gemini-2.5-flash-preview-tts';
 
@@ -69,13 +69,24 @@ ${text}
 }
 
 function extractAudioPayload(result) {
-    const parts = result?.response?.candidates?.[0]?.content?.parts || [];
-    const audioPart = parts.find((part) => part.inlineData);
-    if (!audioPart || !audioPart.inlineData) return null;
+    const candidates = result?.candidates || result?.response?.candidates || [];
+    const parts = candidates?.[0]?.content?.parts || [];
+    const audioPart = parts.find((part) => part.inlineData || part.inline_data);
+    const inlineData = audioPart?.inlineData || audioPart?.inline_data;
+    if (!inlineData) return null;
     return {
-        audio: audioPart.inlineData.data,
-        mimeType: audioPart.inlineData.mimeType
+        audio: inlineData.data,
+        mimeType: inlineData.mimeType || inlineData.mime_type
     };
+}
+
+function toBase64(data) {
+    if (!data) return null;
+    if (typeof data === 'string') return data;
+    if (Buffer.isBuffer(data)) return data.toString('base64');
+    if (data instanceof Uint8Array) return Buffer.from(data).toString('base64');
+    if (Array.isArray(data)) return Buffer.from(data).toString('base64');
+    return null;
 }
 
 export default async function handler(req, res) {
@@ -105,25 +116,34 @@ export default async function handler(req, res) {
     }
 
     try {
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: modelName });
+        const client = new GoogleGenAI({ apiKey });
+        const voiceName = typeof context.voice === 'string' ? context.voice : 'Kore';
 
-        const result = await model.generateContent({
+        const result = await client.models.generateContent({
+            model: modelName,
             contents: [{ role: 'user', parts: [{ text: buildPrompt(text, context) }] }],
-            generationConfig: {
-                responseModalities: ['AUDIO']
+            config: {
+                responseModalities: ['AUDIO'],
+                speechConfig: {
+                    voiceConfig: {
+                        prebuiltVoiceConfig: {
+                            voiceName
+                        }
+                    }
+                }
             }
         });
 
         const payload = extractAudioPayload(result);
-        if (!payload || !payload.audio) {
+        const audioBase64 = toBase64(payload?.audio);
+        if (!audioBase64) {
             res.status(500).json({ error: 'Empty audio response' });
             return;
         }
 
         res.status(200).json({
-            audio: payload.audio,
-            mimeType: payload.mimeType || 'audio/wav'
+            audio: audioBase64,
+            mimeType: payload?.mimeType || 'audio/wav'
         });
     } catch (error) {
         console.error('Gemini TTS Error:', error);

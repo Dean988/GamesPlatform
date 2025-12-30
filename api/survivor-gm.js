@@ -31,12 +31,12 @@ export default async function handler(req, res) {
 
     STATO GIOCO:
     - Turno ${turn}/${maxTurns}
-    - Vite squadra: ${lives}/${maxLives}
+    - Vite totali squadra: ${lives}/${maxLives}
 
     SCELTE DEL TURNO (una per giocatore):
     ${JSON.stringify(choices || [])}
 
-    INVENTARI GIOCATORI (oggetti condivisibili):
+    STATISTICHE GIOCATORI (vite e inventario condivisibile):
     ${JSON.stringify(players)}
 
     STORIA RECENTE:
@@ -44,8 +44,12 @@ export default async function handler(req, res) {
 
     REGOLE RISPOSTE:
     - Rispondi SOLO con JSON valido (responseMimeType application/json).
-    - Risolvi le scelte del turno in narrative (2-4 frasi brevi).
-    - Calcola il totale in scoreDelta e lifeDelta.
+    - Risolvi le scelte del turno in narrativa: 1-2 frasi generali + esiti per giocatore.
+    - Lo scenario deve cambiare in base alle scelte di ogni giocatore.
+    - Usa playerOutcomes per ogni giocatore con scelta: narrativa breve e effetti.
+    - playerOutcomes deve includere una voce per ogni scelta in choices (stesso ordine se possibile).
+    - In playerOutcomes usa "player" con il nome esatto del giocatore oppure "playerIndex".
+    - Usa scoreDelta e lifeDelta SOLO per effetti globali (es. tempesta radioattiva).
     - Se una scelta richiede d20, usa roll e rollDC ricevuti: con successo (roll >= rollDC) aumenta ricompense, con fallimento riduci.
     - Se roll e molto alto (18-20), aggiungi ricompense extra.
     - Se trovi oggetti, usa itemRewards: array di { rarity, count }.
@@ -66,6 +70,18 @@ export default async function handler(req, res) {
       "lifeDelta": 0,
       "itemRewards": [
         { "rarity": "comune", "count": 1 }
+      ],
+      "playerOutcomes": [
+        {
+          "player": "Nome giocatore",
+          "choiceId": "A",
+          "narrative": "Esito breve della scelta del giocatore",
+          "scoreDelta": 0,
+          "lifeDelta": 0,
+          "itemRewards": [
+            { "rarity": "raro", "count": 1 }
+          ]
+        }
       ],
       "question": "Il testo della domanda/sfida.",
       "options": [

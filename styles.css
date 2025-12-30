@@ -797,6 +797,10 @@ input:focus {
   box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8);
 }
 
+#surv-narrative-text {
+  white-space: pre-line;
+}
+
 .surv-question-box h3 {
   color: #fff;
   text-align: center;
@@ -974,16 +978,66 @@ input:focus {
 .surv-player-inv {
   margin-bottom: 10px;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  gap: 6px;
   border-bottom: 1px solid #222;
-  padding-bottom: 5px;
+  padding-bottom: 8px;
+}
+
+.surv-player-inv.is-down {
+  opacity: 0.55;
+}
+
+.surv-player-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .surv-p-name {
-  width: 100px;
   font-size: 0.75rem;
   color: #888;
   flex-shrink: 0;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.surv-life-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.surv-life-badge {
+  font-size: 0.6rem;
+  color: #c7ffbd;
+  border: 1px solid rgba(57, 255, 20, 0.4);
+  padding: 2px 6px;
+  border-radius: 999px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.surv-life-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.life-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  border: 1px solid #333;
+  background: #111;
+}
+
+.life-dot.is-full {
+  background: var(--surv-green);
+  border-color: rgba(57, 255, 20, 0.5);
+  box-shadow: 0 0 6px rgba(57, 255, 20, 0.5);
 }
 
 .surv-items-row {
@@ -1072,34 +1126,48 @@ input:focus {
 }
 
 /* RARITY SYSTEM OVERRIDE */
-.item-comune {
+.surv-item.item-comune {
   border-color: #666;
-  color: #aaa;
+  color: #bfbfbf;
+  background: rgba(120, 120, 120, 0.08);
 }
 
-.item-raro {
+.surv-item.item-raro {
   border-color: #00e5ff;
   color: #00e5ff;
-  box-shadow: 0 0 2px #00e5ff;
+  background: rgba(0, 229, 255, 0.12);
+  box-shadow: 0 0 4px rgba(0, 229, 255, 0.35);
 }
 
-.item-epico {
+.surv-item.item-epico {
   border-color: #d500f9;
   color: #d500f9;
-  box-shadow: 0 0 3px #d500f9;
+  background: rgba(213, 0, 249, 0.12);
+  box-shadow: 0 0 5px rgba(213, 0, 249, 0.35);
 }
 
-.item-leggendario {
+.surv-item.item-leggendario {
   border-color: #ffbf00;
   color: #ffbf00;
-  box-shadow: 0 0 5px #ffbf00;
+  background: rgba(255, 191, 0, 0.12);
+  box-shadow: 0 0 7px rgba(255, 191, 0, 0.35);
 }
 
-.item-supremo {
+.surv-item.item-supremo {
   border-color: #ff003c;
   color: #ff003c;
-  box-shadow: 0 0 8px #ff003c;
+  background: rgba(255, 0, 60, 0.12);
+  box-shadow: 0 0 10px rgba(255, 0, 60, 0.4);
   animation: pulse-border 1.5s infinite;
+}
+
+.surv-choice-pill.is-down {
+  border-color: #333;
+  color: #666;
+}
+
+.surv-choice-pill.is-down .pill-choice {
+  color: #a66;
 }
 
 @keyframes pulse-border {
