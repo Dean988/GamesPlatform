@@ -1063,7 +1063,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error('Risposta AI non valida');
             }
             if (!response.ok) {
-                throw new Error(data?.error || 'Errore comunicazione AI');
+                const detail = data?.details || data?.error || responseText || 'Errore comunicazione AI';
+                throw new Error(detail);
             }
 
             applyTurnOutcome(data, choices);
