@@ -90,6 +90,53 @@ function toBase64(data) {
     return null;
 }
 
+async function synthesizeGoogleCloud(text, context = {}) {
+    const ttsKey = process.env.GOOGLE_TTS_API_KEY;
+    if (!ttsKey) return null;
+
+    const voiceName = typeof context.ttsVoice === 'string' ? context.ttsVoice : 'it-IT-Neural2-C';
+    const speakingRate = toNumber(context.ttsRate, 0.97);
+    const pitch = toNumber(context.ttsPitch, 0);
+
+    const response = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${ttsKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            input: { text },
+            voice: {
+                languageCode: 'it-IT',
+                name: voiceName
+            },
+            audioConfig: {
+                audioEncoding: 'MP3',
+                speakingRate,
+                pitch
+            }
+        })
+    });
+
+    const responseText = await response.text();
+    if (!response.ok) {
+        throw new Error(responseText || 'Google TTS failed');
+    }
+
+    let data = null;
+    try {
+        data = JSON.parse(responseText);
+    } catch (parseError) {
+        throw new Error('Google TTS invalid response');
+    }
+
+    if (!data?.audioContent) {
+        throw new Error('Google TTS missing audio');
+    }
+
+    return {
+        audio: data.audioContent,
+        mimeType: 'audio/mpeg'
+    };
+}
+
 export default async function handler(req, res) {
     if (req.method !== 'POST') {
         res.status(405).json({ error: 'Method not allowed' });
@@ -97,8 +144,9 @@ export default async function handler(req, res) {
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-        res.status(500).json({ error: 'Missing GEMINI_API_KEY' });
+    const googleTtsKey = process.env.GOOGLE_TTS_API_KEY;
+    if (!apiKey && !googleTtsKey) {
+        res.status(500).json({ error: 'Missing GEMINI_API_KEY or GOOGLE_TTS_API_KEY' });
         return;
     }
 
@@ -116,7 +164,6 @@ export default async function handler(req, res) {
         return;
     }
 
-    const client = new GoogleGenAI({ apiKey });
     const voiceName = typeof context.voice === 'string' ? context.voice : 'Kore';
 
     const requestConfigPrimary = {
@@ -141,41 +188,70 @@ export default async function handler(req, res) {
         }
     };
 
-    async function runRequest(model, config) {
-        return client.models.generateContent({
-            model,
-            contents: [{ role: 'user', parts: [{ text: buildPrompt(text, context) }] }],
-            config
-        });
-    }
-
     try {
-        let result;
-        try {
-            result = await runRequest(modelPrimary, requestConfigPrimary);
-        } catch (primaryError) {
-            console.error('Gemini TTS primary error:', primaryError);
+        let result = null;
+        if (apiKey) {
+            const client = new GoogleGenAI({ apiKey });
+            const runRequest = async (model, config) =>
+                client.models.generateContent({
+                    model,
+                    contents: [{ role: 'user', parts: [{ text: buildPrompt(text, context) }] }],
+                    config
+                });
+
             try {
-                result = await runRequest(modelPrimary, requestConfigFallback);
-            } catch (secondaryError) {
-                console.error('Gemini TTS primary fallback error:', secondaryError);
-                result = await runRequest(modelFallback, requestConfigPrimary);
+                result = await runRequest(modelPrimary, requestConfigPrimary);
+            } catch (primaryError) {
+                console.error('Gemini TTS primary error:', primaryError);
+                try {
+                    result = await runRequest(modelPrimary, requestConfigFallback);
+                } catch (secondaryError) {
+                    console.error('Gemini TTS primary fallback error:', secondaryError);
+                    result = await runRequest(modelFallback, requestConfigPrimary);
+                }
             }
         }
 
-        const payload = extractAudioPayload(result);
-        const audioBase64 = toBase64(payload?.audio);
-        if (!audioBase64) {
-            res.status(500).json({ error: 'Empty audio response' });
-            return;
+        if (result) {
+            const payload = extractAudioPayload(result);
+            const audioBase64 = toBase64(payload?.audio);
+            if (audioBase64) {
+                res.status(200).json({
+                    audio: audioBase64,
+                    mimeType: payload?.mimeType || 'audio/wav'
+                });
+                return;
+            }
         }
 
-        res.status(200).json({
-            audio: audioBase64,
-            mimeType: payload?.mimeType || 'audio/wav'
-        });
+        if (googleTtsKey) {
+            const fallback = await synthesizeGoogleCloud(text, context);
+            if (fallback?.audio) {
+                res.status(200).json(fallback);
+                return;
+            }
+        }
+
+        res.status(500).json({ error: 'Empty audio response' });
     } catch (error) {
         console.error('Gemini TTS Error:', error);
+        if (googleTtsKey) {
+            try {
+                const fallback = await synthesizeGoogleCloud(text, context);
+                if (fallback?.audio) {
+                    res.status(200).json(fallback);
+                    return;
+                }
+            } catch (fallbackError) {
+                console.error('Google TTS Error:', fallbackError);
+                res.status(500).json({
+                    error: 'TTS failed',
+                    details: fallbackError.message || error.message || String(error)
+                });
+                return;
+            }
+        }
+
         res.status(500).json({
             error: 'TTS failed',
             details: error.message || String(error)

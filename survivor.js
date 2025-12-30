@@ -1403,6 +1403,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let ttsAbort = null;
     let ttsRequestId = 0;
     let fallbackTtsActive = false;
+    let fallbackVoice = null;
+    let fallbackVoicePending = false;
 
     function getAudioContext() {
         if (!ttsAudioContext) {
@@ -1465,13 +1467,41 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => notif.remove(), 2400);
     }
 
+    function pickItalianVoice() {
+        if (!('speechSynthesis' in window)) return null;
+        const voices = window.speechSynthesis.getVoices();
+        if (!voices.length) return null;
+        const priority = [
+            /google.*it/i,
+            /microsoft.*(elsa|isabella|lucia|italian|italiano)/i,
+            /apple.*ital/i,
+            /ital/i
+        ];
+        for (const pattern of priority) {
+            const match = voices.find((voice) => pattern.test(voice.name) || pattern.test(voice.lang));
+            if (match) return match;
+        }
+        return voices.find((voice) => voice.lang && voice.lang.toLowerCase().startsWith('it')) || voices[0];
+    }
+
     function fallbackSpeak(text) {
         if (!('speechSynthesis' in window) || !text) return;
         try {
+            if (!fallbackVoice) {
+                fallbackVoice = pickItalianVoice();
+                if (!fallbackVoice && !fallbackVoicePending) {
+                    fallbackVoicePending = true;
+                    window.speechSynthesis.onvoiceschanged = () => {
+                        fallbackVoice = pickItalianVoice();
+                        fallbackVoicePending = false;
+                    };
+                }
+            }
             const msg = new SpeechSynthesisUtterance(text);
             msg.lang = 'it-IT';
             msg.rate = 0.98;
             msg.pitch = 0.95;
+            if (fallbackVoice) msg.voice = fallbackVoice;
             fallbackTtsActive = true;
             window.speechSynthesis.speak(msg);
         } catch (error) {
