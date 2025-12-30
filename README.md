@@ -1,4 +1,3 @@
-# 🍌 IMPOSOTORE - Nano Banana Edition
 
 Piattaforma web premium per giocare a "Impostore" in compagnia (3-20 giocatori), utilizzando un solo dispositivo e l'intelligenza artificiale di Google Gemini per generare parole segrete infinite.
 
