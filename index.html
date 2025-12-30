@@ -185,6 +185,12 @@
           <h3 id="surv-question-text">Attendere...</h3>
         </div>
 
+        <div class="surv-choice-bar">
+          <span id="surv-choice-player">Risponde: --</span>
+          <span id="surv-choice-progress">0/0</span>
+        </div>
+        <div id="surv-choice-list" class="surv-choice-list"></div>
+
         <div id="surv-options-grid" class="surv-options-grid"></div>
 
         <div class="surv-inventory-section">
@@ -222,6 +228,16 @@
       <p id="sheet-body">...</p>
     </div>
     <button id="sheet-close" class="btn-close">CHIUDI DOSSIER</button>
+  </div>
+
+  <div id="dice-overlay" class="dice-overlay" aria-hidden="true">
+    <div class="dice-panel">
+      <div id="dice-context" class="dice-context">Tiro d20</div>
+      <div id="dice-cube" class="dice-cube">
+        <div id="dice-value" class="dice-value">20</div>
+      </div>
+      <div class="dice-caption">Protocollo di fortuna attivo</div>
+    </div>
   </div>
 
   <script src="/app.js"></script>

@@ -430,6 +430,10 @@ document.addEventListener('DOMContentLoaded', () => {
         return 'supremo';
     }
 
+    function rollD20() {
+        return Math.floor(Math.random() * 20) + 1;
+    }
+
     function initItemPools() {
         const pools = { comune: [], raro: [], epico: [], leggendario: [], supremo: [] };
         ITEM_LIBRARY.forEach((item) => {
@@ -463,6 +467,11 @@ document.addEventListener('DOMContentLoaded', () => {
             peekTokens: 0,
             itemLuck: 0,
             itemPools: initItemPools(),
+            currentOptions: [],
+            pendingChoices: [],
+            activePlayerIndex: 0,
+            waitingForResolution: false,
+            isRolling: false,
             isGameOver: false
         };
     }
@@ -491,6 +500,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const narrativeText = document.getElementById('surv-narrative-text');
     const questionText = document.getElementById('surv-question-text');
+    const choicePlayerLabel = document.getElementById('surv-choice-player');
+    const choiceProgressLabel = document.getElementById('surv-choice-progress');
+    const choiceList = document.getElementById('surv-choice-list');
     const optionsGrid = document.getElementById('surv-options-grid');
     const inventoryContainer = document.getElementById('surv-inventories');
     const scoreDisplay = document.getElementById('surv-score');
@@ -503,6 +515,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const itemShareBtn = document.getElementById('surv-item-share');
     const itemCancelBtn = document.getElementById('surv-item-cancel');
     const shareTargets = document.getElementById('surv-share-targets');
+    const diceOverlay = document.getElementById('dice-overlay');
+    const diceCube = document.getElementById('dice-cube');
+    const diceValue = document.getElementById('dice-value');
+    const diceContext = document.getElementById('dice-context');
 
     const btnRestartSurv = document.getElementById('surv-restart');
 
@@ -547,6 +563,12 @@ document.addEventListener('DOMContentLoaded', () => {
         gameState = createGameState();
         updateHUD();
         closeItemPanel();
+        if (choicePlayerLabel) choicePlayerLabel.textContent = 'Risponde: --';
+        if (choiceProgressLabel) choiceProgressLabel.textContent = '0/0';
+        if (choiceList) choiceList.innerHTML = '';
+        questionText.textContent = 'Attendere...';
+        narrativeText.textContent = 'Inizializzazione sistema...';
+        optionsGrid.innerHTML = '';
     }
 
     inpSurvCount.addEventListener('input', renderPlayerInputs);
@@ -580,7 +602,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         updateHUD();
         showPanel(sectionGame);
-        await gameTurn(null);
+        await requestTurnOutcome([]);
     });
 
     btnRestartSurv.addEventListener('click', initSetup);
@@ -600,6 +622,8 @@ document.addEventListener('DOMContentLoaded', () => {
             livesDisplay.textContent = `VITE: ${gameState.lives} / ${gameState.maxLives}`;
         }
         renderInventories();
+        updateChoiceStatus();
+        renderChoiceList();
     }
 
     function renderInventories() {
@@ -635,9 +659,211 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    async function gameTurn(lastChoiceData) {
-        optionsGrid.innerHTML = '<div class="surv-spinner">CONNETTENDO ASSET NEURALI...</div>';
-        questionText.textContent = 'Analisi in corso...';
+    function setLoadingState(message) {
+        optionsGrid.innerHTML = '<div class="surv-spinner">SINCRONIZZAZIONE IN CORSO...</div>';
+        questionText.textContent = message || 'Analisi in corso...';
+        if (choicePlayerLabel) choicePlayerLabel.textContent = 'Elaborazione...';
+        if (choiceProgressLabel) {
+            choiceProgressLabel.textContent = `${gameState.pendingChoices.length}/${gameState.players.length}`;
+        }
+    }
+
+    function setOptionsDisabled(disabled) {
+        const btns = document.querySelectorAll('.btn-surv-opt');
+        btns.forEach((b) => {
+            b.disabled = disabled;
+        });
+    }
+
+    function playDiceRoll(playerName, roll, dc) {
+        if (!diceOverlay || !diceCube || !diceValue || !diceContext) {
+            return Promise.resolve();
+        }
+        diceContext.textContent = `${playerName} tira d20 (CD ${dc})`;
+        diceValue.textContent = roll;
+
+        diceOverlay.classList.add('is-active');
+        diceOverlay.setAttribute('aria-hidden', 'false');
+
+        diceCube.classList.remove('is-rolling');
+        void diceCube.offsetWidth;
+        diceCube.classList.add('is-rolling');
+
+        return new Promise((resolve) => {
+            setTimeout(() => {
+                diceOverlay.classList.remove('is-active');
+                diceOverlay.setAttribute('aria-hidden', 'true');
+                resolve();
+            }, 1100);
+        });
+    }
+
+    function updateChoiceStatus() {
+        if (!choicePlayerLabel || !choiceProgressLabel) return;
+        const total = gameState.players.length;
+        const done = gameState.pendingChoices.length;
+        choiceProgressLabel.textContent = `${done}/${total}`;
+
+        if (done < total) {
+            const current = gameState.players[gameState.activePlayerIndex];
+            choicePlayerLabel.textContent = `Risponde: ${current ? current.name : '--'}`;
+        } else {
+            choicePlayerLabel.textContent = 'Elaborazione...';
+        }
+    }
+
+    function renderChoiceList() {
+        if (!choiceList) return;
+        choiceList.innerHTML = '';
+        gameState.players.forEach((player, idx) => {
+            const choice = gameState.pendingChoices.find((entry) => entry.playerIndex === idx);
+            const pill = document.createElement('div');
+            pill.className = `surv-choice-pill${choice ? ' is-done' : ''}`;
+            const rollTag = choice && choice.requiresRoll ? `<span class="pill-roll">d20 ${choice.roll}</span>` : '';
+            pill.innerHTML = `<span class="pill-name">${player.name}</span><span class="pill-meta"><span class="pill-choice">${choice ? choice.optionId : '--'}</span>${rollTag}</span>`;
+            choiceList.appendChild(pill);
+        });
+    }
+
+    function renderOptions(options) {
+        optionsGrid.innerHTML = '';
+        options.forEach((opt, idx) => {
+            const btn = document.createElement('button');
+            const optId = opt.id || String.fromCharCode(65 + idx);
+            const rollTag = opt.requiresRoll ? '<span class="opt-roll">d20</span>' : '';
+            btn.className = 'btn-surv-opt';
+            btn.dataset.optionId = optId;
+            btn.innerHTML = `<span class="opt-id">${optId}</span> <span class="opt-text">${opt.text || ''}</span>${rollTag}`;
+
+            btn.addEventListener('click', () => handleOptionClick(opt, idx));
+            optionsGrid.appendChild(btn);
+        });
+
+        if (gameState.peekTokens > 0 && options.length > 0) {
+            const hintIndex = Math.floor(Math.random() * options.length);
+            const buttons = optionsGrid.querySelectorAll('.btn-surv-opt');
+            if (buttons[hintIndex]) buttons[hintIndex].classList.add('opt-hint');
+            gameState.peekTokens -= 1;
+        }
+    }
+
+    function startChoicePhase(question, options) {
+        gameState.currentOptions = Array.isArray(options) ? options : [];
+        gameState.pendingChoices = [];
+        gameState.activePlayerIndex = 0;
+        gameState.waitingForResolution = false;
+
+        questionText.textContent = question || 'Decisione richiesta.';
+        renderOptions(gameState.currentOptions);
+        updateChoiceStatus();
+        renderChoiceList();
+    }
+
+    function lockOptions() {
+        const btns = document.querySelectorAll('.btn-surv-opt');
+        btns.forEach((b) => {
+            b.disabled = true;
+        });
+    }
+
+    async function handleOptionClick(option, index) {
+        if (gameState.waitingForResolution || gameState.isRolling) return;
+        const playerIndex = gameState.activePlayerIndex;
+        const player = gameState.players[playerIndex];
+        if (!player) return;
+
+        const optionId = option.id || String.fromCharCode(65 + index);
+        const requiresRoll = Boolean(option.requiresRoll);
+        const rollDC = requiresRoll ? clampNumber(toNumber(option.rollDC, 12), 5, 19) : null;
+        const roll = requiresRoll ? rollD20() : null;
+
+        if (requiresRoll && roll !== null) {
+            gameState.isRolling = true;
+            setOptionsDisabled(true);
+            await playDiceRoll(player.name, roll, rollDC);
+            showRollNotification(`Tiro d20 ${player.name}: ${roll} (CD ${rollDC})`);
+            gameState.isRolling = false;
+        }
+
+        gameState.pendingChoices.push({
+            playerIndex,
+            player: player.name,
+            optionId,
+            optionText: option.text || '',
+            requiresRoll,
+            roll,
+            rollDC
+        });
+        gameState.activePlayerIndex += 1;
+
+        updateChoiceStatus();
+        renderChoiceList();
+
+        const isLastChoice = gameState.activePlayerIndex >= gameState.players.length;
+        if (!isLastChoice) {
+            setOptionsDisabled(false);
+        } else {
+            lockOptions();
+            requestTurnOutcome(gameState.pendingChoices);
+        }
+    }
+
+    function summarizeChoices(choices) {
+        if (!choices.length) return '';
+        return choices
+            .map((entry) => {
+                const rollInfo = entry.requiresRoll ? ` d20 ${entry.roll}` : '';
+                return `${entry.player}: ${entry.optionId}${rollInfo}`;
+            })
+            .join(', ');
+    }
+
+    function applyItemRewards(rewards) {
+        const gained = [];
+        if (!Array.isArray(rewards)) return gained;
+
+        rewards.forEach((reward) => {
+            const count = Math.max(1, toNumber(reward.count, 1));
+            for (let i = 0; i < count; i += 1) {
+                let rarity = normalizeRarity(reward.rarity) || rollRarity();
+                if (gameState.itemLuck > 0) {
+                    rarity = upgradeRarity(rarity, 1);
+                    gameState.itemLuck -= 1;
+                }
+                const targetIndex = Math.floor(Math.random() * gameState.players.length);
+                const item = grantItemToPlayer(targetIndex, rarity);
+                if (item) gained.push(item);
+            }
+        });
+        return gained;
+    }
+
+    function applyTurnOutcome(data, choices) {
+        const narrative = data.narrative || 'Sistema operativo attivo.';
+        const scoreDelta = toNumber(data.scoreDelta, 0);
+        const lifeDelta = toNumber(data.lifeDelta, 0);
+        const appliedScore = applyScoreDelta(scoreDelta, true);
+        const appliedLife = applyLifeDelta(lifeDelta);
+        const itemsFound = applyItemRewards(data.itemRewards);
+
+        const outcomeBits = [];
+        if (appliedScore !== 0) outcomeBits.push(`Punti ${formatSigned(appliedScore)}`);
+        if (appliedLife !== 0) outcomeBits.push(`Vite ${formatSigned(appliedLife)}`);
+        if (itemsFound.length) outcomeBits.push(`Oggetti +${itemsFound.length}`);
+
+        const extra = outcomeBits.length ? `\n${outcomeBits.join(' | ')}` : '';
+        narrativeText.textContent = `${narrative}${extra}`;
+        speak(narrative);
+
+        if (choices.length) {
+            gameState.history += `\nSCELTE TURNO ${gameState.turn}: ${summarizeChoices(choices)}`;
+        }
+        gameState.history += `\nESITO TURNO ${gameState.turn}: ${narrative}${outcomeBits.length ? ' | ' + outcomeBits.join(', ') : ''}`;
+    }
+
+    async function requestTurnOutcome(choices) {
+        gameState.waitingForResolution = true;
+        setLoadingState('Calcolo esito...');
 
         try {
             const response = await fetch('/api/survivor-gm', {
@@ -648,7 +874,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     maxTurns: gameState.maxTurns,
                     lives: gameState.lives,
                     maxLives: gameState.maxLives,
-                    lastChoice: lastChoiceData,
+                    choices,
                     history: gameState.history
                 })
             });
@@ -656,18 +882,21 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!response.ok) throw new Error('Errore comunicazione AI');
             const data = await response.json();
 
-            narrativeText.textContent = data.narrative || 'Sistema operativo attivo.';
-            speak(data.narrative);
+            applyTurnOutcome(data, choices);
 
-            gameState.history += `\nTURNO ${gameState.turn}: ${data.narrative}`;
+            const resolvingTurn = choices.length > 0;
+            const reachedMaxTurns = resolvingTurn && gameState.turn >= gameState.maxTurns;
 
-            if (data.isGameOver || gameState.turn > gameState.maxTurns) {
+            if (data.isGameOver || gameState.lives <= 0 || reachedMaxTurns) {
                 endGame(data);
                 return;
             }
 
-            questionText.textContent = data.question || 'Decisione richiesta.';
-            renderOptions(Array.isArray(data.options) ? data.options : []);
+            if (resolvingTurn) {
+                gameState.turn += 1;
+            }
+            updateHUD();
+            startChoicePhase(data.question, Array.isArray(data.options) ? data.options : []);
         } catch (e) {
             console.error(e);
             questionText.textContent = 'ERRORE CRITICO DI SISTEMA.';
@@ -676,81 +905,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function renderOptions(options) {
-        optionsGrid.innerHTML = '';
-        options.forEach((opt, idx) => {
-            const btn = document.createElement('button');
-            btn.className = 'btn-surv-opt';
-            btn.innerHTML = `<span class="opt-id">${String.fromCharCode(65 + idx)}</span> <span class="opt-text">${opt.text}</span>`;
-
-            btn.addEventListener('click', () => handleOptionClick(opt));
-            optionsGrid.appendChild(btn);
-        });
-
-        if (gameState.peekTokens > 0 && options.length > 0) {
-            let bestIndex = 0;
-            let bestScore = toNumber(options[0].score, 0);
-            options.forEach((opt, idx) => {
-                const score = toNumber(opt.score, 0);
-                if (score > bestScore) {
-                    bestScore = score;
-                    bestIndex = idx;
-                }
-            });
-            const buttons = optionsGrid.querySelectorAll('.btn-surv-opt');
-            if (buttons[bestIndex]) buttons[bestIndex].classList.add('opt-hint');
-            gameState.peekTokens -= 1;
-        }
-    }
-
-    function handleOptionClick(option) {
-        const scoreDelta = toNumber(option.score, 0);
-        const lifeDelta = toNumber(option.lifeDelta, 0);
-
-        const appliedScore = applyScoreDelta(scoreDelta, true);
-        const appliedLife = applyLifeDelta(lifeDelta);
-        const itemGranted = maybeGrantItemFromOption(option);
-
-        const outcomeBits = [];
-        if (appliedScore !== 0) outcomeBits.push(`Punti ${formatSigned(appliedScore)}`);
-        if (appliedLife !== 0) outcomeBits.push(`Vite ${formatSigned(appliedLife)}`);
-        if (itemGranted) outcomeBits.push(`Oggetto ${itemGranted.name}`);
-
-        const consequence = option.consequence || 'Azione eseguita...';
-        const extra = outcomeBits.length ? `\n${outcomeBits.join(' | ')}` : '';
-
-        gameState.history += `\nSCELTA: ${option.text}. ESITO: ${consequence}${outcomeBits.length ? ' | ' + outcomeBits.join(', ') : ''}`;
-
-        narrativeText.textContent = `${consequence}${extra}`;
-        speak(consequence);
-
-        const btns = document.querySelectorAll('.btn-surv-opt');
-        btns.forEach((b) => {
-            b.disabled = true;
-        });
-
-        if (gameState.lives <= 0) {
-            endGame({ narrative: 'Vite esaurite. Fine missione.' });
-            return;
-        }
-
-        gameState.turn++;
-        updateHUD();
-
-        setTimeout(() => {
-            if (gameState.turn > gameState.maxTurns) {
-                endGame({ narrative: 'Sopravvivenza completata. Recupero in corso...' });
-            } else {
-                gameTurn(option.text);
-            }
-        }, 4000);
-    }
-
     function endGame(data) {
         showPanel(sectionResult);
         const livesLine = `Vite residue: ${gameState.lives} / ${gameState.maxLives}`;
         document.getElementById('surv-end-msg').textContent = `Punteggio Finale: ${gameState.score}\n${livesLine}\n\n${data.narrative || ''}`;
         speak(`Gioco terminato. ${data.narrative || ''}`);
+        if (choicePlayerLabel) choicePlayerLabel.textContent = 'Missione conclusa';
+        if (choiceProgressLabel) {
+            choiceProgressLabel.textContent = `${gameState.players.length}/${gameState.players.length}`;
+        }
+        if (choiceList) choiceList.innerHTML = '';
+        optionsGrid.innerHTML = '';
     }
 
     // --- ITEM HANDLING ---
@@ -965,27 +1130,20 @@ document.addEventListener('DOMContentLoaded', () => {
         return item;
     }
 
-    function maybeGrantItemFromOption(option) {
-        if (!option) return null;
-        const hasReward = Boolean(option.itemReward || option.item);
-        if (!hasReward) return null;
-
-        let rarity = normalizeRarity(option.itemRarity || (option.item && option.item.rarity)) || rollRarity();
-        if (gameState.itemLuck > 0) {
-            rarity = upgradeRarity(rarity, 1);
-            gameState.itemLuck -= 1;
-        }
-
-        const targetIndex = Math.floor(Math.random() * gameState.players.length);
-        return grantItemToPlayer(targetIndex, rarity);
-    }
-
     function showItemNotification(message) {
         const notif = document.createElement('div');
         notif.className = 'item-notif';
         notif.textContent = message;
         document.body.appendChild(notif);
         setTimeout(() => notif.remove(), 2800);
+    }
+
+    function showRollNotification(message) {
+        const notif = document.createElement('div');
+        notif.className = 'item-notif roll-notif';
+        notif.textContent = message;
+        document.body.appendChild(notif);
+        setTimeout(() => notif.remove(), 2200);
     }
 
     // --- TTS HELPER ---
@@ -1003,7 +1161,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const msg = new SpeechSynthesisUtterance(text);
             const voices = window.speechSynthesis.getVoices();
 
-            let voice = voices.find((v) => v.name.includes('Elsa') && v.name.includes('Neural') && v.lang.includes('it'));
+            msg.lang = 'it-IT';
+            let voice = voices.find((v) => v.lang && v.lang.toLowerCase().startsWith('it'));
             if (!voice) voice = voices.find((v) => v.name.includes('Elsa') && v.lang.includes('it'));
             if (!voice) voice = voices.find((v) => v.lang === 'it-IT');
 

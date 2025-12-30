@@ -21,7 +21,7 @@ export default async function handler(req, res) {
         body = {};
     }
 
-    const { players, turn, maxTurns, lives, maxLives, lastChoice, history } = body;
+    const { players, turn, maxTurns, lives, maxLives, choices, history } = body;
 
     // SYSTEM PROMPT
     const systemPrompt = `
@@ -33,11 +33,8 @@ export default async function handler(req, res) {
     - Turno ${turn}/${maxTurns}
     - Vite squadra: ${lives}/${maxLives}
 
-    Il tuo compito:
-    1. Analizzare la situazione attuale.
-    2. Se c'e stata una scelta precedente ("lastChoice"), narrare le conseguenze di quella scelta (successo, fallimento, danni, oggetto trovato).
-    3. Se il gioco non e finito, proporre una nuova situazione critica e una domanda difficile a risposta multipla (8 opzioni).
-    4. Se turno > maxTurns o le vite sono a 0, dichiara il GAME OVER.
+    SCELTE DEL TURNO (una per giocatore):
+    ${JSON.stringify(choices || [])}
 
     INVENTARI GIOCATORI (oggetti condivisibili):
     ${JSON.stringify(players)}
@@ -46,35 +43,37 @@ export default async function handler(req, res) {
     ${history || 'Nessuna. Inizio del gioco.'}
 
     REGOLE RISPOSTE:
-    - Devi fornire ESATTAMENTE 8 alternative.
-    - Le alternative devono essere difficili, dilemmi morali o test di conoscenza survival o logica.
-    - Ogni risposta deve avere un punteggio (score) positivo o negativo.
-    - Ogni risposta deve avere una variazione vite (lifeDelta), positiva o negativa.
-    - Alcune risposte possono trovare OGGETTI (itemReward: true/false).
-    - Se itemReward e true, puoi indicare itemRarity: comune, raro, epico, leggendario, supremo.
+    - Rispondi SOLO con JSON valido (responseMimeType application/json).
+    - Risolvi le scelte del turno in narrative (2-4 frasi brevi).
+    - Calcola il totale in scoreDelta e lifeDelta.
+    - Se una scelta richiede d20, usa roll e rollDC ricevuti: con successo (roll >= rollDC) aumenta ricompense, con fallimento riduci.
+    - Se roll e molto alto (18-20), aggiungi ricompense extra.
+    - Se trovi oggetti, usa itemRewards: array di { rarity, count }.
     - Non nominare oggetti specifici nella narrativa: parla solo di "un oggetto".
+    - Se il gioco e finito, isGameOver true e niente nuova domanda.
+
+    REGOLE DOMANDA:
+    - Fornisci ESATTAMENTE 8 opzioni.
+    - Testo opzioni corto (max 60 caratteri), senza punto finale.
+    - Dilemmi morali o scelte survival, tono serio.
+    - Alcune opzioni devono richiedere un tiro d20: aggiungi requiresRoll true e rollDC (10-18).
 
     FORMATO RISPOSTA (JSON STRICT):
     {
-      "narrative": "Testo da leggere con TTS. Descrivi cosa succede in modo atmosferico.",
+      "narrative": "Testo da leggere con TTS.",
       "isGameOver": boolean,
+      "scoreDelta": 0,
+      "lifeDelta": 0,
+      "itemRewards": [
+        { "rarity": "comune", "count": 1 }
+      ],
       "question": "Il testo della domanda/sfida.",
       "options": [
-        {
-          "id": "A",
-          "text": "Descrizione azione",
-          "score": 10,
-          "lifeDelta": -1,
-          "itemReward": true,
-          "itemRarity": "raro",
-          "consequence": "Breve testo dell'esito immediato mostrato dopo il click"
-        },
-        ... (fino a 8 opzioni)
+        { "id": "A", "text": "Descrizione azione", "requiresRoll": true, "rollDC": 14 }
       ]
     }
 
     Usa la lingua ITALIANA. Tono serio, drammatico, radioattivo.
-    Se i giocatori hanno oggetti nell'inventario, usali per sbloccare opzioni o modificare la narrazione (senza citare nomi specifici).
   `;
 
     try {
