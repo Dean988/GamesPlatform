@@ -543,6 +543,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const diceContext = document.getElementById('dice-context');
 
     const btnRestartSurv = document.getElementById('surv-restart');
+    const survTabs = Array.from(document.querySelectorAll('.surv-tab'));
+
+    setupSurvTabs();
 
     // STATE
     let selectedItem = null;
@@ -576,6 +579,25 @@ document.addEventListener('DOMContentLoaded', () => {
     if (itemUseBtn) itemUseBtn.addEventListener('click', useSelectedItem);
     if (itemShareBtn) itemShareBtn.addEventListener('click', showShareTargets);
     if (itemCancelBtn) itemCancelBtn.addEventListener('click', closeItemPanel);
+
+    function setupSurvTabs() {
+        if (!survTabs.length) return;
+        survTabs.forEach((tab) => {
+            tab.addEventListener('click', () => {
+                const targetId = tab.dataset.target;
+                const target = targetId ? document.getElementById(targetId) : null;
+                setActiveSurvTab(tab);
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+    }
+
+    function setActiveSurvTab(activeTab) {
+        survTabs.forEach((tab) => tab.classList.remove('is-active'));
+        if (activeTab) activeTab.classList.add('is-active');
+    }
 
     // --- SETUP LOGIC ---
 
@@ -624,7 +646,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 shield: 0
             });
         }
-        gameState.maxTurns = parseInt(inpSurvTurns.value, 10) || 5;
+        gameState.maxTurns = clampNumber(parseInt(inpSurvTurns.value, 10) || 8, 8, 20);
         gameState.turn = 1;
         gameState.score = 0;
         gameState.scenarioPrompt = inpSurvScenario ? inpSurvScenario.value.trim() : '';
@@ -1016,6 +1038,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setLoadingState('Calcolo esito...');
 
         try {
+            const finaleRequired = choices.length > 0 && gameState.turn >= gameState.maxTurns;
             const response = await fetch('/api/survivor-gm', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1027,7 +1050,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     maxLives: getLifeTotals().max,
                     choices,
                     history: gameState.history,
-                    scenario: gameState.scenarioPrompt
+                    scenario: gameState.scenarioPrompt,
+                    finaleRequired
                 })
             });
 
@@ -1073,7 +1097,23 @@ document.addEventListener('DOMContentLoaded', () => {
         showPanel(sectionResult);
         const lifeTotals = getLifeTotals();
         const livesLine = `Vite residue: ${lifeTotals.current} / ${lifeTotals.max}`;
-        document.getElementById('surv-end-msg').textContent = `Punteggio Finale: ${gameState.score}\n${livesLine}\n\n${data.narrative || ''}`;
+        let finaleLines = Array.isArray(data.playerFinale)
+            ? data.playerFinale
+                .map((entry) => {
+                    const name = entry.player || entry.name || '';
+                    const result = entry.result || entry.esito || '';
+                    return name && result ? `${name}: ${result}` : null;
+                })
+                .filter(Boolean)
+            : [];
+        if (!finaleLines.length) {
+            finaleLines = gameState.players.map((player) => {
+                const status = toNumber(player.life, 0) > 0 ? 'Si salva' : 'Non ce la fa';
+                return `${player.name}: ${status}`;
+            });
+        }
+        const finaleText = finaleLines.length ? `\n\nEsiti finali:\n${finaleLines.join('\n')}` : '';
+        document.getElementById('surv-end-msg').textContent = `Punteggio Finale: ${gameState.score}\n${livesLine}\n\n${data.narrative || ''}${finaleText}`;
         speak(`Gioco terminato. ${data.narrative || ''}`, {
             isGameOver: true,
             lives: lifeTotals.current,

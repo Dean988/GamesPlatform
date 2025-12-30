@@ -21,7 +21,7 @@ export default async function handler(req, res) {
         body = {};
     }
 
-    const { players, turn, maxTurns, lives, maxLives, choices, history, scenario } = body;
+    const { players, turn, maxTurns, lives, maxLives, choices, history, scenario, finaleRequired } = body;
 
     function safeJsonParse(raw) {
         if (!raw || typeof raw !== 'string') return null;
@@ -52,6 +52,7 @@ export default async function handler(req, res) {
     - Turno ${turn}/${maxTurns}
     - Vite totali squadra: ${lives}/${maxLives}
     - Scenario scelto: ${scenario || 'Non specificato'}
+    - finaleRequired: ${Boolean(finaleRequired)}
 
     SCELTE DEL TURNO (una per giocatore):
     ${JSON.stringify(choices || [])}
@@ -76,12 +77,17 @@ export default async function handler(req, res) {
     - Se trovi oggetti, usa itemRewards: array di { rarity, count }.
     - Non nominare oggetti specifici nella narrativa: parla solo di "un oggetto".
     - Se il gioco e finito, isGameOver true e niente nuova domanda.
+    - Quando finaleRequired e true, isGameOver DEVE essere true e non fornire nuove opzioni.
 
     REGOLE DOMANDA:
-    - Fornisci ESATTAMENTE 8 opzioni.
+    - Fornisci ESATTAMENTE 6 opzioni.
     - Testo opzioni corto (max 60 caratteri), senza punto finale.
     - Dilemmi morali o scelte survival, tono serio.
     - Alcune opzioni devono richiedere un tiro d20: aggiungi requiresRoll true e rollDC (10-18).
+
+    FINE PARTITA:
+    - Se finaleRequired e true, devi chiudere la storia con isGameOver true.
+    - Descrivi cosa succede a ogni personaggio in playerFinale.
 
     FORMATO RISPOSTA (JSON STRICT):
     {
@@ -103,6 +109,9 @@ export default async function handler(req, res) {
             { "rarity": "raro", "count": 1 }
           ]
         }
+      ],
+      "playerFinale": [
+        { "player": "Nome giocatore", "result": "Esito finale del personaggio" }
       ],
       "question": "Il testo della domanda/sfida.",
       "options": [

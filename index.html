@@ -36,8 +36,14 @@
       </div>
 
       <div class="hero-actions home-buttons">
-        <button id="btn-enter" class="home-button home-impostor">IMPOSTOR</button>
-        <button id="btn-survivor" class="home-button home-survivor">SURVIVOR AI</button>
+        <button id="btn-enter" class="home-button home-impostor">
+          <span class="home-title">IMPOSTOR</span>
+          <span class="home-sub">Indovina chi mente</span>
+        </button>
+        <button id="btn-survivor" class="home-button home-survivor">
+          <span class="home-title">SURVIVOR AI</span>
+          <span class="home-sub">Storia cooperativa a scelte</span>
+        </button>
       </div>
     </section>
 
@@ -162,7 +168,7 @@
           </div>
           <div class="counter-control">
             <label>TURNI</label>
-            <input id="surv-turns" type="number" min="3" max="20" value="5" />
+            <input id="surv-turns" type="number" min="8" max="20" value="8" />
           </div>
         </div>
         <div id="surv-players-list" class="player-grid"></div>
@@ -181,23 +187,31 @@
           <span id="surv-lives">VITE: 0</span>
         </div>
 
-        <div class="surv-narrative-box">
+        <div class="surv-tabbar">
+          <button type="button" class="surv-tab is-active" data-target="surv-narrative-box">Storia</button>
+          <button type="button" class="surv-tab" data-target="surv-choices-section">Scelte</button>
+          <button type="button" class="surv-tab" data-target="surv-inventory-section">Equipaggiamento</button>
+        </div>
+
+        <div id="surv-narrative-box" class="surv-narrative-box">
           <p id="surv-narrative-text">Inizializzazione sistema...</p>
         </div>
 
-        <div class="surv-question-box">
-          <h3 id="surv-question-text">Attendere...</h3>
+        <div id="surv-choices-section" class="surv-choices-section">
+          <div class="surv-question-box">
+            <h3 id="surv-question-text">Attendere...</h3>
+          </div>
+
+          <div class="surv-choice-bar">
+            <span id="surv-choice-player">Risponde: --</span>
+            <span id="surv-choice-progress">0/0</span>
+          </div>
+          <div id="surv-choice-list" class="surv-choice-list"></div>
+
+          <div id="surv-options-grid" class="surv-options-grid"></div>
         </div>
 
-        <div class="surv-choice-bar">
-          <span id="surv-choice-player">Risponde: --</span>
-          <span id="surv-choice-progress">0/0</span>
-        </div>
-        <div id="surv-choice-list" class="surv-choice-list"></div>
-
-        <div id="surv-options-grid" class="surv-options-grid"></div>
-
-        <div class="surv-inventory-section">
+        <div id="surv-inventory-section" class="surv-inventory-section">
           <h3>EQUIPAGGIAMENTO</h3>
           <p class="surv-inventory-hint">Tocca un oggetto per usarlo o passarlo a un compagno.</p>
           <div id="surv-inventories" class="surv-inventories"></div>

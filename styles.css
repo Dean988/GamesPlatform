@@ -34,6 +34,10 @@ body {
   overflow-x: hidden;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 /* BACKGROUND FX */
 .grid-overlay {
   position: fixed;
@@ -75,7 +79,7 @@ body {
   max-width: 480px;
   display: flex;
   flex-direction: column;
-  padding: 20px;
+  padding: calc(18px + env(safe-area-inset-top)) 16px calc(90px + env(safe-area-inset-bottom));
   /* Instead of absolute, manage flow */
   position: absolute;
   top: 0;
@@ -194,9 +198,10 @@ body {
   padding: 22px 18px;
   border-radius: var(--radius-xl);
   font-family: var(--font-display);
-  font-size: 1.4rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
   border: none;
   cursor: pointer;
   transition: transform 0.2s var(--transition), box-shadow 0.2s var(--transition);
@@ -230,6 +235,11 @@ body {
   align-items: center;
   border-bottom: 1px solid var(--border);
   margin-bottom: 20px;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: rgba(5, 5, 5, 0.85);
+  backdrop-filter: blur(6px);
 }
 
 .btn-icon-only {
@@ -710,7 +720,7 @@ input:focus {
 /* HEADER OVERRIDE */
 .survivor-header {
   border-bottom: 1px solid var(--surv-border) !important;
-  background: rgba(0, 0, 0, 0.8);
+  background: rgba(0, 0, 0, 0.9);
 }
 
 .survivor-header .step-indicator {
@@ -808,6 +818,41 @@ input:focus {
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
 }
 
+.surv-tabbar {
+  position: sticky;
+  top: calc(60px + env(safe-area-inset-top) + 6px);
+  z-index: 25;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 8px;
+  margin: 6px 0 14px;
+  background: rgba(0, 0, 0, 0.85);
+  border: 1px solid rgba(57, 255, 20, 0.25);
+  border-radius: 10px;
+  backdrop-filter: blur(6px);
+}
+
+.surv-tab {
+  border: 1px solid rgba(57, 255, 20, 0.2);
+  background: rgba(10, 20, 10, 0.45);
+  color: #b9ffb0;
+  font-size: 0.6rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 10px 6px;
+  border-radius: 8px;
+  font-family: 'Courier New', monospace;
+  cursor: pointer;
+}
+
+.surv-tab.is-active {
+  border-color: var(--surv-green);
+  color: #0c1a0c;
+  background: var(--surv-green);
+  box-shadow: 0 0 12px rgba(57, 255, 20, 0.3);
+}
+
 .surv-narrative-box {
   background: radial-gradient(circle at top, rgba(10, 20, 10, 0.35), rgba(0, 0, 0, 0.95));
   border: 1px solid #2b2b2b;
@@ -819,6 +864,12 @@ input:focus {
   line-height: 1.6;
   font-size: 0.95rem;
   box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8);
+}
+
+#surv-narrative-box,
+#surv-choices-section,
+#surv-inventory-section {
+  scroll-margin-top: 160px;
 }
 
 #surv-narrative-text {
@@ -835,6 +886,19 @@ input:focus {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   font-size: 0.8rem;
+}
+
+.surv-choices-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.surv-question-box {
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid #1f1f1f;
+  border-radius: 12px;
+  padding: 10px 12px 0;
 }
 
 .surv-choice-bar {
@@ -1342,4 +1406,25 @@ input:focus {
   100% {
     transform: rotate(360deg) scale(1);
   }
+}
+.home-title {
+  font-size: 1.4rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.home-sub {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.75);
+  letter-spacing: 0.08em;
+  text-transform: none;
+}
+
+.home-impostor .home-sub {
+  color: rgba(0, 0, 0, 0.65);
+}
+
+.home-survivor .home-sub {
+  color: rgba(57, 255, 20, 0.75);
 }
