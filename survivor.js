@@ -853,7 +853,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const extra = outcomeBits.length ? `\n${outcomeBits.join(' | ')}` : '';
         narrativeText.textContent = `${narrative}${extra}`;
-        speak(narrative);
+        const ttsContext = buildTtsContext(scoreDelta, lifeDelta, itemsFound, choices);
+        speak(narrative, ttsContext);
 
         if (choices.length) {
             gameState.history += `\nSCELTE TURNO ${gameState.turn}: ${summarizeChoices(choices)}`;
@@ -909,7 +910,14 @@ document.addEventListener('DOMContentLoaded', () => {
         showPanel(sectionResult);
         const livesLine = `Vite residue: ${gameState.lives} / ${gameState.maxLives}`;
         document.getElementById('surv-end-msg').textContent = `Punteggio Finale: ${gameState.score}\n${livesLine}\n\n${data.narrative || ''}`;
-        speak(`Gioco terminato. ${data.narrative || ''}`);
+        speak(`Gioco terminato. ${data.narrative || ''}`, {
+            isGameOver: true,
+            lives: gameState.lives,
+            maxLives: gameState.maxLives,
+            score: gameState.score,
+            turn: gameState.turn,
+            maxTurns: gameState.maxTurns
+        });
         if (choicePlayerLabel) choicePlayerLabel.textContent = 'Missione conclusa';
         if (choiceProgressLabel) {
             choiceProgressLabel.textContent = `${gameState.players.length}/${gameState.players.length}`;
@@ -1147,34 +1155,98 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- TTS HELPER ---
+    let ttsAudio = null;
+    let ttsAbort = null;
+    let ttsRequestId = 0;
 
     function stopAudio() {
-        if ('speechSynthesis' in window) {
-            window.speechSynthesis.cancel();
+        ttsRequestId += 1;
+        if (ttsAbort) {
+            ttsAbort.abort();
+            ttsAbort = null;
+        }
+        if (ttsAudio) {
+            ttsAudio.pause();
+            ttsAudio.currentTime = 0;
+            ttsAudio = null;
         }
     }
 
-    function speak(text) {
+    function summarizeRollStats(choices) {
+        if (!Array.isArray(choices) || choices.length === 0) return null;
+        const rollChoices = choices.filter(
+            (entry) => entry && entry.requiresRoll && Number.isFinite(entry.roll)
+        );
+        if (!rollChoices.length) return null;
+        const values = rollChoices.map((entry) => entry.roll);
+        const successes = rollChoices.filter(
+            (entry) => entry.roll >= toNumber(entry.rollDC, 0)
+        ).length;
+        const failures = rollChoices.length - successes;
+        const critical = rollChoices.filter((entry) => entry.roll >= 18).length;
+        return {
+            count: rollChoices.length,
+            min: Math.min(...values),
+            max: Math.max(...values),
+            successes,
+            failures,
+            critical
+        };
+    }
+
+    function buildTtsContext(scoreDelta, lifeDelta, itemsFound, choices) {
+        return {
+            turn: gameState.turn,
+            maxTurns: gameState.maxTurns,
+            lives: gameState.lives,
+            maxLives: gameState.maxLives,
+            score: gameState.score,
+            scoreDelta,
+            lifeDelta,
+            itemCount: Array.isArray(itemsFound) ? itemsFound.length : 0,
+            rollStats: summarizeRollStats(choices)
+        };
+    }
+
+    async function speak(text, context = {}) {
         if (!text) return;
-        if ('speechSynthesis' in window) {
-            stopAudio();
-            const msg = new SpeechSynthesisUtterance(text);
-            const voices = window.speechSynthesis.getVoices();
+        stopAudio();
 
-            msg.lang = 'it-IT';
-            let voice = voices.find((v) => v.lang && v.lang.toLowerCase().startsWith('it'));
-            if (!voice) voice = voices.find((v) => v.name.includes('Elsa') && v.lang.includes('it'));
-            if (!voice) voice = voices.find((v) => v.lang === 'it-IT');
+        const controller = new AbortController();
+        const requestId = ttsRequestId;
+        ttsAbort = controller;
 
-            if (voice) msg.voice = voice;
-            msg.rate = 1.0;
-            msg.pitch = 0.9;
+        try {
+            const response = await fetch('/api/survivor-tts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text, context }),
+                signal: controller.signal
+            });
 
-            window.speechSynthesis.speak(msg);
+            if (!response.ok) {
+                throw new Error('TTS error');
+            }
+
+            const data = await response.json();
+            if (requestId !== ttsRequestId) return;
+            if (!data || !data.audio) {
+                throw new Error('TTS missing audio');
+            }
+
+            const mimeType = data.mimeType || 'audio/wav';
+            ttsAudio = new Audio(`data:${mimeType};base64,${data.audio}`);
+            ttsAudio.preload = 'auto';
+            ttsAudio.play().catch((error) => {
+                console.error('TTS play failed', error);
+            });
+        } catch (error) {
+            if (error.name === 'AbortError') return;
+            console.error('TTS error', error);
+        } finally {
+            if (ttsAbort === controller) {
+                ttsAbort = null;
+            }
         }
-    }
-
-    if ('speechSynthesis' in window) {
-        window.speechSynthesis.getVoices();
     }
 });
