@@ -742,6 +742,30 @@ input:focus {
   border-radius: 4px !important;
 }
 
+#survivor-flow textarea {
+  width: 100%;
+  background: #000;
+  border: 1px solid var(--surv-border);
+  color: var(--surv-green);
+  font-family: 'Courier New', monospace;
+  border-radius: 4px;
+  padding: 10px;
+  resize: vertical;
+}
+
+.surv-scenario {
+  margin-top: 12px;
+}
+
+.surv-scenario label {
+  display: block;
+  font-size: 0.6rem;
+  color: #888;
+  letter-spacing: 0.18em;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
 #survivor-flow .counter-control label {
   color: #888 !important;
 }

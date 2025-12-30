@@ -21,7 +21,26 @@ export default async function handler(req, res) {
         body = {};
     }
 
-    const { players, turn, maxTurns, lives, maxLives, choices, history } = body;
+    const { players, turn, maxTurns, lives, maxLives, choices, history, scenario } = body;
+
+    function safeJsonParse(raw) {
+        if (!raw || typeof raw !== 'string') return null;
+        const cleaned = raw.replace(/```json|```/gi, '').trim();
+        try {
+            return JSON.parse(cleaned);
+        } catch (e) {
+            const start = cleaned.indexOf('{');
+            const end = cleaned.lastIndexOf('}');
+            if (start >= 0 && end > start) {
+                try {
+                    return JSON.parse(cleaned.slice(start, end + 1));
+                } catch (innerError) {
+                    return null;
+                }
+            }
+            return null;
+        }
+    }
 
     // SYSTEM PROMPT
     const systemPrompt = `
@@ -32,6 +51,7 @@ export default async function handler(req, res) {
     STATO GIOCO:
     - Turno ${turn}/${maxTurns}
     - Vite totali squadra: ${lives}/${maxLives}
+    - Scenario scelto: ${scenario || 'Non specificato'}
 
     SCELTE DEL TURNO (una per giocatore):
     ${JSON.stringify(choices || [])}
@@ -46,6 +66,7 @@ export default async function handler(req, res) {
     - Rispondi SOLO con JSON valido (responseMimeType application/json).
     - Risolvi le scelte del turno in narrativa: 1-2 frasi generali + esiti per giocatore.
     - Lo scenario deve cambiare in base alle scelte di ogni giocatore.
+    - Se lo scenario e specificato, la storia deve restare coerente con quello.
     - Usa playerOutcomes per ogni giocatore con scelta: narrativa breve e effetti.
     - playerOutcomes deve includere una voce per ogni scelta in choices (stesso ordine se possibile).
     - In playerOutcomes usa "player" con il nome esatto del giocatore oppure "playerIndex".
@@ -103,7 +124,11 @@ export default async function handler(req, res) {
         });
 
         const responseText = result.response.text();
-        const jsonResponse = JSON.parse(responseText);
+        const jsonResponse = safeJsonParse(responseText);
+        if (!jsonResponse) {
+            res.status(502).json({ error: 'Invalid JSON from model' });
+            return;
+        }
 
         res.status(200).json(jsonResponse);
 

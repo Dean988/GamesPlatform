@@ -458,6 +458,7 @@ document.addEventListener('DOMContentLoaded', () => {
             maxTurns: 5,
             players: [],
             history: '',
+            scenarioPrompt: '',
             score: 0,
             scoreMultiplier: 1,
             scoreBoostTurns: 0,
@@ -516,6 +517,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const inpSurvCount = document.getElementById('surv-count');
     const inpSurvTurns = document.getElementById('surv-turns');
     const listSurvPlayers = document.getElementById('surv-players-list');
+    const inpSurvScenario = document.getElementById('surv-scenario');
     const btnStartSurv = document.getElementById('surv-start-btn');
 
     const narrativeText = document.getElementById('surv-narrative-text');
@@ -624,7 +626,10 @@ document.addEventListener('DOMContentLoaded', () => {
         gameState.maxTurns = parseInt(inpSurvTurns.value, 10) || 5;
         gameState.turn = 1;
         gameState.score = 0;
-        gameState.history = 'Inizio della simulazione.';
+        gameState.scenarioPrompt = inpSurvScenario ? inpSurvScenario.value.trim() : '';
+        gameState.history = gameState.scenarioPrompt
+            ? `Scenario: ${gameState.scenarioPrompt}`
+            : 'Inizio della simulazione.';
 
         updateHUD();
         showPanel(sectionGame);
@@ -1011,6 +1016,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetch('/api/survivor-gm', {
                 method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     players: gameState.players,
                     turn: gameState.turn,
@@ -1018,12 +1024,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     lives: getLifeTotals().current,
                     maxLives: getLifeTotals().max,
                     choices,
-                    history: gameState.history
+                    history: gameState.history,
+                    scenario: gameState.scenarioPrompt
                 })
             });
 
-            if (!response.ok) throw new Error('Errore comunicazione AI');
-            const data = await response.json();
+            const responseText = await response.text();
+            let data = null;
+            try {
+                data = JSON.parse(responseText);
+            } catch (parseError) {
+                throw new Error('Risposta AI non valida');
+            }
+            if (!response.ok) {
+                throw new Error(data?.error || 'Errore comunicazione AI');
+            }
 
             applyTurnOutcome(data, choices);
 
@@ -1045,7 +1060,9 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) {
             console.error(e);
             questionText.textContent = 'ERRORE CRITICO DI SISTEMA.';
-            narrativeText.textContent = 'Connessione persa. Riprovare.';
+            narrativeText.textContent = e && e.message
+                ? `Connessione persa. ${e.message}`
+                : 'Connessione persa. Riprovare.';
             optionsGrid.innerHTML = '<button class="btn-surv-opt" onclick="location.reload()">RIAVVIA SISTEMA</button>';
         }
     }
