@@ -610,6 +610,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     btnStartSurv.addEventListener('click', async () => {
+        await unlockAudio();
         const pCount = clampNumber(parseInt(inpSurvCount.value, 10) || 1, 1, 8);
         gameState = createGameState();
         gameState.players = [];
@@ -840,6 +841,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function handleOptionClick(option, index) {
         if (gameState.waitingForResolution || gameState.isRolling) return;
+        unlockAudio();
         const playerIndex = gameState.choiceOrder[gameState.activeChoiceIndex];
         const player = gameState.players[playerIndex];
         if (!player) return;
@@ -1338,14 +1340,87 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- TTS HELPER ---
     let ttsAudio = null;
+    let ttsAudioNode = null;
+    let ttsAudioContext = null;
+    let audioUnlocked = false;
     let ttsAbort = null;
     let ttsRequestId = 0;
+
+    function getAudioContext() {
+        if (!ttsAudioContext) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) {
+                ttsAudioContext = new AudioCtx();
+            }
+        }
+        return ttsAudioContext;
+    }
+
+    async function unlockAudio() {
+        if (audioUnlocked) return;
+        const context = getAudioContext();
+        if (context) {
+            try {
+                if (context.state === 'suspended') {
+                    await context.resume();
+                }
+                const buffer = context.createBuffer(1, 1, 22050);
+                const source = context.createBufferSource();
+                source.buffer = buffer;
+                source.connect(context.destination);
+                source.start(0);
+                source.stop(0.02);
+                audioUnlocked = true;
+                return;
+            } catch (error) {
+                console.error('Audio unlock failed', error);
+            }
+        }
+
+        try {
+            const silentAudio = new Audio(
+                'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAIA+AAABAAgAZGF0YQAAAAA='
+            );
+            await silentAudio.play();
+            silentAudio.pause();
+            audioUnlocked = true;
+        } catch (error) {
+            console.error('Silent audio unlock failed', error);
+        }
+    }
+
+    function base64ToArrayBuffer(base64) {
+        const binary = atob(base64);
+        const len = binary.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i += 1) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+        return bytes.buffer;
+    }
+
+    function showAudioWarning(message) {
+        const notif = document.createElement('div');
+        notif.className = 'item-notif audio-notif';
+        notif.textContent = message;
+        document.body.appendChild(notif);
+        setTimeout(() => notif.remove(), 2400);
+    }
 
     function stopAudio() {
         ttsRequestId += 1;
         if (ttsAbort) {
             ttsAbort.abort();
             ttsAbort = null;
+        }
+        if (ttsAudioNode) {
+            try {
+                ttsAudioNode.stop(0);
+            } catch (error) {
+                // ignore
+            }
+            ttsAudioNode.disconnect();
+            ttsAudioNode = null;
         }
         if (ttsAudio) {
             ttsAudio.pause();
@@ -1418,16 +1493,40 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const mimeType = data.mimeType || 'audio/wav';
+            const context = getAudioContext();
+            if (context) {
+                try {
+                    if (context.state === 'suspended') {
+                        await context.resume();
+                    }
+                    const buffer = base64ToArrayBuffer(data.audio);
+                    const decoded = await context.decodeAudioData(buffer.slice(0));
+                    const source = context.createBufferSource();
+                    source.buffer = decoded;
+                    source.connect(context.destination);
+                    ttsAudioNode = source;
+                    source.start(0);
+                    audioUnlocked = true;
+                    return;
+                } catch (error) {
+                    console.error('TTS decode failed', error);
+                }
+            }
+
             ttsAudio = new Audio(`data:${mimeType};base64,${data.audio}`);
             ttsAudio.preload = 'auto';
             ttsAudio.volume = 1;
             ttsAudio.playsInline = true;
             ttsAudio.play().catch((error) => {
+                if (error?.name === 'NotAllowedError') {
+                    showAudioWarning('Audio bloccato. Tocca lo schermo per attivarlo.');
+                }
                 console.error('TTS play failed', error);
             });
         } catch (error) {
             if (error.name === 'AbortError') return;
             console.error('TTS error', error);
+            showAudioWarning('Audio non disponibile. Controlla la connessione.');
         } finally {
             if (ttsAbort === controller) {
                 ttsAbort = null;
