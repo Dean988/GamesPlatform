@@ -521,6 +521,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnStartSurv = document.getElementById('surv-start-btn');
 
     const narrativeText = document.getElementById('surv-narrative-text');
+    const ttsReplayBtn = document.getElementById('surv-tts-btn');
     const questionText = document.getElementById('surv-question-text');
     const choicePlayerLabel = document.getElementById('surv-choice-player');
     const choiceProgressLabel = document.getElementById('surv-choice-progress');
@@ -550,6 +551,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // STATE
     let selectedItem = null;
     let gameState = createGameState();
+    let lastNarrativeText = '';
+    let lastNarrativeContext = {};
 
     // --- NAVIGATION ---
 
@@ -579,6 +582,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (itemUseBtn) itemUseBtn.addEventListener('click', useSelectedItem);
     if (itemShareBtn) itemShareBtn.addEventListener('click', showShareTargets);
     if (itemCancelBtn) itemCancelBtn.addEventListener('click', closeItemPanel);
+    if (ttsReplayBtn) {
+        ttsReplayBtn.addEventListener('click', async () => {
+            await unlockAudio();
+            if (lastNarrativeText) {
+                speak(lastNarrativeText, lastNarrativeContext);
+            }
+        });
+    }
 
     function setupSurvTabs() {
         if (!survTabs.length) return;
@@ -1024,6 +1035,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const extra = outcomeBits.length ? `\n${outcomeBits.join(' | ')}` : '';
         narrativeText.textContent = `${narrativeBlock}${extra}`;
         const ttsContext = buildTtsContext(appliedScore, totalLifeDelta, itemsFound, choices);
+        lastNarrativeText = narrativeBlock;
+        lastNarrativeContext = ttsContext;
         speak(narrativeBlock, ttsContext);
 
         if (choices.length) {
@@ -1114,15 +1127,18 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
         const finaleText = finaleLines.length ? `\n\nEsiti finali:\n${finaleLines.join('\n')}` : '';
+        const endNarrative = `Gioco terminato. ${data.narrative || ''}`;
         document.getElementById('surv-end-msg').textContent = `Punteggio Finale: ${gameState.score}\n${livesLine}\n\n${data.narrative || ''}${finaleText}`;
-        speak(`Gioco terminato. ${data.narrative || ''}`, {
+        lastNarrativeText = endNarrative;
+        lastNarrativeContext = {
             isGameOver: true,
             lives: lifeTotals.current,
             maxLives: lifeTotals.max,
             score: gameState.score,
             turn: gameState.turn,
             maxTurns: gameState.maxTurns
-        });
+        };
+        speak(endNarrative, lastNarrativeContext);
         if (choicePlayerLabel) choicePlayerLabel.textContent = 'Missione conclusa';
         if (choiceProgressLabel) {
             const lifeTotals = getLifeTotals();
@@ -1590,6 +1606,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     showAudioWarning('Audio bloccato. Tocca lo schermo per attivarlo.');
                 }
                 console.error('TTS play failed', error);
+                fallbackSpeak(text);
             });
         } catch (error) {
             if (error.name === 'AbortError') return;
