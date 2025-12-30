@@ -1466,7 +1466,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
-    async function speak(text, context = {}) {
+    async function speak(text, ttsContext = {}) {
         if (!text) return;
         stopAudio();
 
@@ -1478,7 +1478,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch('/api/survivor-tts', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text, context }),
+                body: JSON.stringify({ text, context: ttsContext }),
                 signal: controller.signal
             });
 
@@ -1501,17 +1501,17 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const mimeType = data.mimeType || 'audio/wav';
-            const context = getAudioContext();
-            if (context) {
+            const audioContext = getAudioContext();
+            if (audioContext) {
                 try {
-                    if (context.state === 'suspended') {
-                        await context.resume();
+                    if (audioContext.state === 'suspended') {
+                        await audioContext.resume();
                     }
                     const buffer = base64ToArrayBuffer(data.audio);
-                    const decoded = await context.decodeAudioData(buffer.slice(0));
-                    const source = context.createBufferSource();
+                    const decoded = await audioContext.decodeAudioData(buffer.slice(0));
+                    const source = audioContext.createBufferSource();
                     source.buffer = decoded;
-                    source.connect(context.destination);
+                    source.connect(audioContext.destination);
                     ttsAudioNode = source;
                     source.start(0);
                     audioUnlocked = true;
