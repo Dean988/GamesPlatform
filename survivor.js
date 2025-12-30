@@ -1385,6 +1385,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let audioUnlocked = false;
     let ttsAbort = null;
     let ttsRequestId = 0;
+    let fallbackTtsActive = false;
 
     function getAudioContext() {
         if (!ttsAudioContext) {
@@ -1447,11 +1448,29 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => notif.remove(), 2400);
     }
 
+    function fallbackSpeak(text) {
+        if (!('speechSynthesis' in window) || !text) return;
+        try {
+            const msg = new SpeechSynthesisUtterance(text);
+            msg.lang = 'it-IT';
+            msg.rate = 0.98;
+            msg.pitch = 0.95;
+            fallbackTtsActive = true;
+            window.speechSynthesis.speak(msg);
+        } catch (error) {
+            console.error('Fallback TTS failed', error);
+        }
+    }
+
     function stopAudio() {
         ttsRequestId += 1;
         if (ttsAbort) {
             ttsAbort.abort();
             ttsAbort = null;
+        }
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+            fallbackTtsActive = false;
         }
         if (ttsAudioNode) {
             try {
@@ -1576,6 +1595,9 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('TTS error', error);
             const message = error?.message ? `Audio non disponibile: ${error.message}` : 'Audio non disponibile.';
             showAudioWarning(message);
+            if (!fallbackTtsActive) {
+                fallbackSpeak(text);
+            }
         } finally {
             if (ttsAbort === controller) {
                 ttsAbort = null;
