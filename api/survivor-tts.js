@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 
-const modelName = 'gemini-2.5-flash-preview-tts';
+const modelPrimary = 'gemini-2.5-flash-preview-tts';
+const modelFallback = 'gemini-2.5-flash-tts';
 
 function toNumber(value, fallback = 0) {
     const number = Number(value);
@@ -115,24 +116,52 @@ export default async function handler(req, res) {
         return;
     }
 
-    try {
-        const client = new GoogleGenAI({ apiKey });
-        const voiceName = typeof context.voice === 'string' ? context.voice : 'Kore';
+    const client = new GoogleGenAI({ apiKey });
+    const voiceName = typeof context.voice === 'string' ? context.voice : 'Kore';
 
-        const result = await client.models.generateContent({
-            model: modelName,
-            contents: [{ role: 'user', parts: [{ text: buildPrompt(text, context) }] }],
-            config: {
-                responseModalities: ['AUDIO'],
-                speechConfig: {
-                    voiceConfig: {
-                        prebuiltVoiceConfig: {
-                            voiceName
-                        }
-                    }
+    const requestConfigPrimary = {
+        responseModalities: ['AUDIO'],
+        speechConfig: {
+            voiceConfig: {
+                prebuiltVoiceConfig: {
+                    voiceName
                 }
             }
+        }
+    };
+
+    const requestConfigFallback = {
+        response_modalities: ['AUDIO'],
+        speech_config: {
+            voice_config: {
+                prebuilt_voice_config: {
+                    voice_name: voiceName
+                }
+            }
+        }
+    };
+
+    async function runRequest(model, config) {
+        return client.models.generateContent({
+            model,
+            contents: [{ role: 'user', parts: [{ text: buildPrompt(text, context) }] }],
+            config
         });
+    }
+
+    try {
+        let result;
+        try {
+            result = await runRequest(modelPrimary, requestConfigPrimary);
+        } catch (primaryError) {
+            console.error('Gemini TTS primary error:', primaryError);
+            try {
+                result = await runRequest(modelPrimary, requestConfigFallback);
+            } catch (secondaryError) {
+                console.error('Gemini TTS primary fallback error:', secondaryError);
+                result = await runRequest(modelFallback, requestConfigPrimary);
+            }
+        }
 
         const payload = extractAudioPayload(result);
         const audioBase64 = toBase64(payload?.audio);
@@ -147,6 +176,9 @@ export default async function handler(req, res) {
         });
     } catch (error) {
         console.error('Gemini TTS Error:', error);
-        res.status(500).json({ error: 'TTS failed', details: error.message });
+        res.status(500).json({
+            error: 'TTS failed',
+            details: error.message || String(error)
+        });
     }
 }

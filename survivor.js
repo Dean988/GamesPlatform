@@ -1482,13 +1482,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 signal: controller.signal
             });
 
-            if (!response.ok) {
-                throw new Error('TTS error');
+            const responseText = await response.text();
+            let data = null;
+            try {
+                data = JSON.parse(responseText);
+            } catch (parseError) {
+                data = null;
             }
-
-            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data?.error || data?.details || responseText || 'TTS error');
+            }
+            if (!data) {
+                throw new Error('TTS invalid response');
+            }
             if (requestId !== ttsRequestId) return;
-            if (!data || !data.audio) {
+            if (!data.audio) {
                 throw new Error('TTS missing audio');
             }
 
@@ -1526,7 +1534,8 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             if (error.name === 'AbortError') return;
             console.error('TTS error', error);
-            showAudioWarning('Audio non disponibile. Controlla la connessione.');
+            const message = error?.message ? `Audio non disponibile: ${error.message}` : 'Audio non disponibile.';
+            showAudioWarning(message);
         } finally {
             if (ttsAbort === controller) {
                 ttsAbort = null;
