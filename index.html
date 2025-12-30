@@ -35,11 +35,9 @@
         <img src="friends.png" alt="Friends" class="hero-image" fetchpriority="high" />
       </div>
 
-      <div class="hero-actions">
-        <button id="btn-enter" class="btn-main">
-          <span class="btn-text">INIZIA PARTITA</span>
-          <span class="btn-icon">→</span>
-        </button>
+      <div class="hero-actions home-buttons">
+        <button id="btn-enter" class="home-button home-impostor">IMPOSTOR</button>
+        <button id="btn-survivor" class="home-button home-survivor">SURVIVOR AI</button>
       </div>
     </section>
 
@@ -146,6 +144,73 @@
 
     </div>
 
+
+    <!-- SURVIVOR FLOW -->
+    <div id="survivor-flow" class="view" style="display: none;">
+      <div class="game-header survivor-header">
+        <button id="btn-back-home-surv" class="btn-icon-only">Home</button>
+        <span class="step-indicator">SURVIVOR PROTOCOL</span>
+      </div>
+
+      <!-- S.1 CONFIG -->
+      <section id="surv-config" class="panel is-visible">
+        <h2 class="surv-title">NUOVA MISSIONE</h2>
+        <div class="input-group">
+          <div class="counter-control">
+            <label>SOPRAVVISSUTI</label>
+            <input id="surv-count" type="number" min="1" max="8" value="1" />
+          </div>
+          <div class="counter-control">
+            <label>TURNI</label>
+            <input id="surv-turns" type="number" min="3" max="20" value="5" />
+          </div>
+        </div>
+        <div id="surv-players-list" class="player-grid"></div>
+        <button id="surv-start-btn" class="btn-survivor-action">AVVIA SIMULAZIONE</button>
+      </section>
+
+      <!-- S.2 GAME LOOP -->
+      <section id="surv-game" class="panel">
+        <div class="surv-status-bar">
+          <span id="surv-turn-indicator">TURNO 1/5</span>
+          <span id="surv-score">PUNTI: 0</span>
+          <span id="surv-lives">VITE: 0</span>
+        </div>
+
+        <div class="surv-narrative-box">
+          <p id="surv-narrative-text">Inizializzazione sistema...</p>
+        </div>
+
+        <div class="surv-question-box">
+          <h3 id="surv-question-text">Attendere...</h3>
+        </div>
+
+        <div id="surv-options-grid" class="surv-options-grid"></div>
+
+        <div class="surv-inventory-section">
+          <h3>EQUIPAGGIAMENTO</h3>
+          <p class="surv-inventory-hint">Tocca un oggetto per usarlo o passarlo a un compagno.</p>
+          <div id="surv-inventories" class="surv-inventories"></div>
+          <div id="surv-item-panel" class="surv-item-panel is-hidden">
+            <div id="surv-item-panel-title" class="surv-item-panel-title"></div>
+            <div class="surv-item-panel-actions">
+              <button id="surv-item-use" class="btn-surv-mini">USA</button>
+              <button id="surv-item-share" class="btn-surv-mini">PASSA</button>
+              <button id="surv-item-cancel" class="btn-surv-mini btn-surv-ghost">ANNULLA</button>
+            </div>
+            <div id="surv-share-targets" class="surv-share-targets is-hidden"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- S.3 RESULT -->
+      <section id="surv-result" class="panel">
+        <h2 id="surv-end-title">FATE</h2>
+        <p id="surv-end-msg">...</p>
+        <button id="surv-restart" class="btn-survivor-action">RIAVVIA</button>
+      </section>
+    </div>
+
   </main>
 
   <!-- SHEET OVERLAY -->
@@ -160,6 +225,7 @@
   </div>
 
   <script src="/app.js"></script>
+  <script src="/survivor.js"></script>
   <script>
     // Simple Navigation Logic for the transitions
     const landing = document.getElementById('landing');
