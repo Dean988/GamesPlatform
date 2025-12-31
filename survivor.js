@@ -434,6 +434,14 @@ document.addEventListener('DOMContentLoaded', () => {
         return Math.floor(Math.random() * 20) + 1;
     }
 
+    function rollD7() {
+        return Math.floor(Math.random() * 7) + 1;
+    }
+
+    function rollCoin() {
+        return Math.random() < 0.5 ? 'testa' : 'croce';
+    }
+
     function initItemPools() {
         const pools = { comune: [], raro: [], epico: [], leggendario: [], supremo: [] };
         ITEM_LIBRARY.forEach((item) => {
@@ -801,7 +809,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     registerRemoteChoice(payload.choice);
                 }
                 if (payload.action === 'item' && survMpState.isHost) {
-                    handleRemoteItemAction(payload.item);
+                    handleRemoteItemAction(payload.item, payload.senderId);
                 }
             }
         });
@@ -1190,6 +1198,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     iButton.className = `surv-item item-${item.rarity || 'comune'}`;
                     iButton.title = item.effectText || item.rarity || '';
                     iButton.textContent = item.name;
+                    if (isMultiMode() && p.id && p.id !== survMpState.playerId) {
+                        iButton.disabled = true;
+                    }
                     iButton.addEventListener('click', () => openItemPanel(pIndex, itemIndex));
                     itemsDiv.appendChild(iButton);
                 });
@@ -1218,12 +1229,16 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function playDiceRoll(playerName, roll, dc) {
+    function playDiceRoll(playerName, roll, dc, rollType) {
         if (!diceOverlay || !diceCube || !diceValue || !diceContext) {
             return Promise.resolve();
         }
-        diceContext.textContent = `${playerName} tira d20 (CD ${dc})`;
-        diceValue.textContent = roll;
+        const typeLabel = rollType === 'd7' ? 'd7' : rollType === 'coin' ? 'moneta' : 'd20';
+        const dcLabel = dc ? ` (CD ${dc})` : '';
+        diceContext.textContent = rollType === 'coin'
+            ? `${playerName} lancia la moneta`
+            : `${playerName} tira ${typeLabel}${dcLabel}`;
+        diceValue.textContent = typeof roll === 'string' ? roll.toUpperCase() : roll;
 
         diceOverlay.classList.add('is-active');
         diceOverlay.setAttribute('aria-hidden', 'false');
@@ -1274,7 +1289,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const isAlive = toNumber(player.life, 0) > 0;
             const pill = document.createElement('div');
             pill.className = `surv-choice-pill${choice ? ' is-done' : ''}${isAlive ? '' : ' is-down'}`;
-            const rollTag = choice && choice.requiresRoll ? `<span class="pill-roll">d20 ${choice.roll}</span>` : '';
+            let rollTag = '';
+            if (choice && choice.requiresRoll) {
+                const rollType = choice.rollType || 'd20';
+                const typeLabel = rollType === 'd7' ? 'd7' : rollType === 'coin' ? 'moneta' : 'd20';
+                rollTag = `<span class="pill-roll">${typeLabel} ${choice.roll}</span>`;
+            }
             const choiceLabel = isAlive ? (choice ? choice.optionId : '--') : 'K.O.';
             pill.innerHTML = `<span class="pill-name">${player.name}</span><span class="pill-meta"><span class="pill-choice">${choiceLabel}</span>${isAlive ? rollTag : ''}</span>`;
             choiceList.appendChild(pill);
@@ -1286,7 +1306,11 @@ document.addEventListener('DOMContentLoaded', () => {
         options.forEach((opt, idx) => {
             const btn = document.createElement('button');
             const optId = opt.id || String.fromCharCode(65 + idx);
-            const rollTag = opt.requiresRoll ? '<span class="opt-roll">d20</span>' : '';
+            let rollTag = '';
+            if (opt.requiresRoll) {
+                const typeLabel = opt.rollType === 'd7' ? 'd7' : opt.rollType === 'coin' ? 'moneta' : 'd20';
+                rollTag = `<span class="opt-roll">${typeLabel}</span>`;
+            }
             btn.className = 'btn-surv-opt';
             btn.dataset.optionId = optId;
             btn.innerHTML = `<span class="opt-id">${optId}</span> <span class="opt-text">${opt.text || ''}</span>${rollTag}`;
@@ -1348,14 +1372,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const optionId = option.id || String.fromCharCode(65 + index);
         const requiresRoll = Boolean(option.requiresRoll);
-        const rollDC = requiresRoll ? clampNumber(toNumber(option.rollDC, 12), 5, 19) : null;
-        const roll = requiresRoll ? rollD20() : null;
+        const rollType = option.rollType || (requiresRoll ? 'd20' : null);
+        const rollDC = requiresRoll && rollType !== 'coin'
+            ? (rollType === 'd7'
+                ? clampNumber(toNumber(option.rollDC, 4), 3, 7)
+                : clampNumber(toNumber(option.rollDC, 12), 5, 19))
+            : null;
+        const roll = requiresRoll
+            ? (rollType === 'd7' ? rollD7() : rollType === 'coin' ? rollCoin() : rollD20())
+            : null;
 
         if (requiresRoll && roll !== null) {
             gameState.isRolling = true;
             setOptionsDisabled(true);
-            await playDiceRoll(player.name, roll, rollDC);
-            showRollNotification(`Tiro d20 ${player.name}: ${roll} (CD ${rollDC})`);
+            await playDiceRoll(player.name, roll, rollDC, rollType);
+            if (rollType === 'coin') {
+                showRollNotification(`Moneta ${player.name}: ${roll}`);
+            } else {
+                const label = rollType === 'd7' ? 'd7' : 'd20';
+                showRollNotification(`Tiro ${label} ${player.name}: ${roll} (CD ${rollDC})`);
+            }
             gameState.isRolling = false;
         }
 
@@ -1366,6 +1402,7 @@ document.addEventListener('DOMContentLoaded', () => {
             optionId,
             optionText: option.text || '',
             requiresRoll,
+            rollType,
             roll,
             rollDC
         };
@@ -1409,7 +1446,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!choices.length) return '';
         return choices
             .map((entry) => {
-                const rollInfo = entry.requiresRoll ? ` d20 ${entry.roll}` : '';
+                let rollInfo = '';
+                if (entry.requiresRoll) {
+                    const rollType = entry.rollType || 'd20';
+                    const typeLabel = rollType === 'd7' ? 'd7' : rollType === 'coin' ? 'moneta' : 'd20';
+                    rollInfo = ` ${typeLabel} ${entry.roll}`;
+                }
                 return `${entry.player}: ${entry.optionId}${rollInfo}`;
             })
             .join(', ');
@@ -1633,8 +1675,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const finaleText = finaleLines.length ? `\n\nEsiti finali:\n${finaleLines.join('\n')}` : '';
         const endNarrative = `Gioco terminato. ${data.narrative || ''}`;
         document.getElementById('surv-end-msg').textContent = `Punteggio Finale: ${gameState.score}\n${livesLine}\n\n${data.narrative || ''}${finaleText}`;
+        const ttsFinaleLines = finaleLines.length ? ['Esiti finali:', ...finaleLines] : [];
+        const ttsEndNarrative = [endNarrative, ...ttsFinaleLines].join('\n').trim();
         lastNarrativeDisplay = endNarrative;
-        lastNarrativeText = endNarrative;
+        lastNarrativeText = ttsEndNarrative;
         lastNarrativeContext = {
             isGameOver: true,
             lives: lifeTotals.current,
@@ -1643,7 +1687,7 @@ document.addEventListener('DOMContentLoaded', () => {
             turn: gameState.turn,
             maxTurns: gameState.maxTurns
         };
-        speak(endNarrative, lastNarrativeContext);
+        speak(ttsEndNarrative, lastNarrativeContext);
         if (choicePlayerLabel) choicePlayerLabel.textContent = 'Missione conclusa';
         if (choiceProgressLabel) {
             const lifeTotals = getLifeTotals();
@@ -1661,6 +1705,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const owner = gameState.players[ownerIndex];
         const item = owner && owner.inventory[itemIndex];
         if (!item) return;
+        if (isMultiMode() && owner?.id && owner.id !== survMpState.playerId) {
+            showItemNotification('Solo il proprietario puo usare questo oggetto.');
+            return;
+        }
 
         selectedItem = {
             ownerIndex,
@@ -1714,6 +1762,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function transferSelectedItem(targetIndex) {
         if (!selectedItem) return;
         const { ownerIndex, itemIndex, ownerId, instanceId } = selectedItem;
+        if (isMultiMode() && ownerId && ownerId !== survMpState.playerId) {
+            showItemNotification('Solo il proprietario puo condividere questo oggetto.');
+            closeItemPanel();
+            return;
+        }
         if (isMultiMode() && !survMpState.isHost) {
             if (window.GPRealtime) {
                 window.GPRealtime.send('survivor', {
@@ -1754,6 +1807,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function useSelectedItem() {
         if (!selectedItem) return;
         const { ownerIndex, itemIndex, ownerId, instanceId } = selectedItem;
+        if (isMultiMode() && ownerId && ownerId !== survMpState.playerId) {
+            showItemNotification('Solo il proprietario puo usare questo oggetto.');
+            closeItemPanel();
+            return;
+        }
         if (isMultiMode() && !survMpState.isHost) {
             if (window.GPRealtime) {
                 window.GPRealtime.send('survivor', {
@@ -1800,22 +1858,27 @@ document.addEventListener('DOMContentLoaded', () => {
         return -1;
     }
 
-    function handleRemoteItemAction(action) {
+    function handleRemoteItemAction(action, senderId) {
         if (!action || !survMpState.isHost) return;
-        const ownerIndex = resolvePlayerIndex(action, 'ownerId', 'ownerIndex');
+        if (senderId && action.ownerId && senderId !== action.ownerId) return;
+        const safeAction = { ...action };
+        if (!safeAction.ownerId && senderId) {
+            safeAction.ownerId = senderId;
+        }
+        const ownerIndex = resolvePlayerIndex(safeAction, 'ownerId', 'ownerIndex');
         if (ownerIndex < 0) return;
         const owner = gameState.players[ownerIndex];
         if (!owner) return;
-        const itemIndex = owner.inventory.findIndex((item) => item.instanceId === action.instanceId);
+        const itemIndex = owner.inventory.findIndex((item) => item.instanceId === safeAction.instanceId);
         if (itemIndex < 0) return;
 
-        if (action.itemAction === 'use') {
+        if (safeAction.itemAction === 'use') {
             const item = owner.inventory.splice(itemIndex, 1)[0];
             applyActions(item.actions, ownerIndex);
             showItemNotification(`Usato: ${item.name}. ${item.effectText}`);
         }
-        if (action.itemAction === 'share') {
-            const targetIndex = resolvePlayerIndex(action, 'targetId', 'targetIndex');
+        if (safeAction.itemAction === 'share') {
+            const targetIndex = resolvePlayerIndex(safeAction, 'targetId', 'targetIndex');
             if (targetIndex < 0) return;
             const item = owner.inventory.splice(itemIndex, 1)[0];
             gameState.players[targetIndex].inventory.push(item);
@@ -2086,17 +2149,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const rollChoices = choices.filter(
             (entry) => entry && entry.requiresRoll && Number.isFinite(entry.roll)
         );
-        if (!rollChoices.length) return null;
+        const coinChoices = choices.filter(
+            (entry) => entry && entry.requiresRoll && typeof entry.roll === 'string'
+        );
+        if (!rollChoices.length && !coinChoices.length) return null;
         const values = rollChoices.map((entry) => entry.roll);
         const successes = rollChoices.filter(
             (entry) => entry.roll >= toNumber(entry.rollDC, 0)
+        ).length + coinChoices.filter((entry) => entry.roll === 'testa').length;
+        const failures = (rollChoices.length + coinChoices.length) - successes;
+        const critical = rollChoices.filter(
+            (entry) => (entry.rollType || 'd20') === 'd20' && entry.roll >= 18
         ).length;
-        const failures = rollChoices.length - successes;
-        const critical = rollChoices.filter((entry) => entry.roll >= 18).length;
         return {
-            count: rollChoices.length,
-            min: Math.min(...values),
-            max: Math.max(...values),
+            count: rollChoices.length + coinChoices.length,
+            min: values.length ? Math.min(...values) : null,
+            max: values.length ? Math.max(...values) : null,
             successes,
             failures,
             critical

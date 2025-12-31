@@ -67,6 +67,7 @@ export default async function handler(req, res) {
     - Rispondi SOLO con JSON valido (responseMimeType application/json).
     - Narrativa breve e diretta: massimo 2-3 frasi, vai subito al punto.
     - Inserisci sempre 1-2 dettagli dello scenario scelto e del contesto survival.
+    - A volte inserisci una battuta o un dettaglio ironico per sdrammatizzare (1 frase breve).
     - Conseguenze legate a risorse/sopravvivenza (radiazioni, fame, riparo, acqua).
     - Lo scenario deve cambiare in base alle scelte di ogni giocatore.
     - Se lo scenario e specificato, la storia deve restare coerente con quello.
@@ -74,8 +75,10 @@ export default async function handler(req, res) {
     - playerOutcomes deve includere una voce per ogni scelta in choices (stesso ordine se possibile).
     - In playerOutcomes usa "player" con il nome esatto del giocatore oppure "playerIndex".
     - Usa scoreDelta e lifeDelta SOLO per effetti globali (es. tempesta radioattiva).
-    - Se una scelta richiede d20, usa roll e rollDC ricevuti: con successo (roll >= rollDC) aumenta ricompense, con fallimento riduci.
-    - Se roll e molto alto (18-20), aggiungi ricompense extra.
+    - Se una scelta richiede tiro, usa rollType ricevuto: "d20", "d7" o "coin".
+    - Con d20/d7 usa roll e rollDC: successo se roll >= rollDC, fallimento altrimenti.
+    - Con coin usa roll "testa" o "croce": testa = successo, croce = fallimento.
+    - Se roll e molto alto (18-20 su d20, 6-7 su d7), aggiungi ricompense extra.
     - Se trovi oggetti, usa itemRewards: array di { rarity, count }.
     - Non nominare oggetti specifici nella narrativa: parla solo di "un oggetto".
     - Se il gioco e finito, isGameOver true e niente nuova domanda.
@@ -86,7 +89,9 @@ export default async function handler(req, res) {
     - Domanda breve e secca (max 80 caratteri).
     - Testo opzioni corto (max 45 caratteri), senza punto finale.
     - Dilemmi morali o scelte survival, tono serio.
-    - Alcune opzioni devono richiedere un tiro d20: aggiungi requiresRoll true e rollDC (10-18).
+    - Alcune opzioni devono richiedere un tiro: aggiungi requiresRoll true, rollType (d20/d7/coin) e rollDC se serve.
+    - Alterna i tipi di tiro tra i turni (non usare solo d20).
+    - Per coin non usare rollDC.
 
     FINE PARTITA:
     - Se finaleRequired e true, devi chiudere la storia con isGameOver true.
@@ -118,7 +123,7 @@ export default async function handler(req, res) {
       ],
       "question": "Il testo della domanda/sfida.",
       "options": [
-        { "id": "A", "text": "Descrizione azione", "requiresRoll": true, "rollDC": 14 }
+        { "id": "A", "text": "Descrizione azione", "requiresRoll": true, "rollType": "d20", "rollDC": 14 }
       ]
     }
 

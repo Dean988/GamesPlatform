@@ -1322,6 +1322,12 @@ body[data-mode="single"] .mp-panel {
   color: #fff;
 }
 
+.surv-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-color: #222;
+}
+
 .surv-item-panel {
   margin-top: 12px;
   padding: 12px;
