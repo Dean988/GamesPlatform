@@ -235,6 +235,7 @@ html {
   border: none;
   cursor: pointer;
   transition: transform 0.2s var(--transition), box-shadow 0.2s var(--transition);
+  min-height: 84px;
 }
 
 .home-button:active {
@@ -445,6 +446,7 @@ body[data-mode="single"] .mp-panel {
   cursor: pointer;
   font-size: 0.7rem;
   text-transform: uppercase;
+  min-height: 44px;
 }
 
 .btn-mp.ghost {
@@ -583,6 +585,8 @@ body[data-mode="single"] .mp-panel {
   justify-content: center;
   align-items: center;
   gap: 10px;
+  min-height: 52px;
+  touch-action: manipulation;
 }
 
 .btn-main {
@@ -639,6 +643,7 @@ body[data-mode="single"] .mp-panel {
   width: 100%;
   border-radius: var(--radius-xl);
   cursor: pointer;
+  min-height: 52px;
 }
 
 .btn-ghost:disabled {
@@ -933,6 +938,7 @@ body[data-mode="single"] .mp-panel {
   box-shadow: 0 0 15px rgba(57, 255, 20, 0.3);
   width: 100%;
   font-size: 0.85rem;
+  min-height: 56px;
 }
 
 #survivor-flow .btn-survivor-action:hover {
@@ -983,6 +989,8 @@ body[data-mode="single"] .mp-panel {
   border-radius: 10px;
   font-family: 'Courier New', monospace;
   cursor: pointer;
+  min-height: 44px;
+  touch-action: manipulation;
 }
 
 .surv-tab.is-active {
@@ -1030,6 +1038,7 @@ body[data-mode="single"] .mp-panel {
   letter-spacing: 0.18em;
   font-family: 'Courier New', monospace;
   cursor: pointer;
+  min-height: 40px;
 }
 
 .surv-tts-btn:active {
@@ -1174,6 +1183,7 @@ body[data-mode="single"] .mp-panel {
   border-radius: 12px;
   min-height: 76px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  touch-action: manipulation;
 }
 
 .btn-surv-opt .opt-roll {
@@ -1358,6 +1368,7 @@ body[data-mode="single"] .mp-panel {
   letter-spacing: 1px;
   cursor: pointer;
   font-size: 0.75rem;
+  min-height: 44px;
 }
 
 .btn-surv-ghost {
@@ -1381,6 +1392,7 @@ body[data-mode="single"] .mp-panel {
   cursor: pointer;
   font-family: 'Courier New', monospace;
   font-size: 0.75rem;
+  min-height: 44px;
 }
 
 .surv-share-empty {
@@ -1604,4 +1616,46 @@ body[data-mode="single"] .mp-panel {
 
 .home-survivor .home-sub {
   color: rgba(57, 255, 20, 0.75);
+}
+
+@media (max-width: 520px) {
+  .action-area {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .btn-main,
+  .btn-primary,
+  .btn-confirm,
+  .btn-danger,
+  .btn-close,
+  .btn-ghost {
+    min-height: 56px;
+    font-size: 0.95rem;
+  }
+
+  .home-button {
+    padding: 26px 18px;
+    min-height: 96px;
+  }
+
+  .btn-mp {
+    min-height: 48px;
+    font-size: 0.75rem;
+  }
+
+  .surv-tab {
+    padding: 14px 10px;
+    min-height: 48px;
+  }
+
+  .btn-surv-opt {
+    min-height: 84px;
+    font-size: 0.9rem;
+  }
+
+  #survivor-flow .btn-survivor-action {
+    padding: 26px;
+    min-height: 60px;
+  }
 }
