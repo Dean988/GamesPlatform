@@ -28,6 +28,10 @@
         <!-- Removed Brand -->
         <h1 class="title-display">IMPOSTORE</h1>
         <p class="subtitle">Il party game deduttivo</p>
+        <div class="mode-switch">
+          <button type="button" class="mode-btn" data-mode="single">1 TELEFONO</button>
+          <button type="button" class="mode-btn" data-mode="multi">MULTI DISPOSITIVI</button>
+        </div>
       </header>
 
       <div class="hero-visual-container">
@@ -71,6 +75,24 @@
         </div>
 
         <div id="player-inputs" class="player-grid"></div>
+
+        <div id="impostor-mp" class="mp-panel">
+          <div class="mp-title">MULTI DISPOSITIVI</div>
+          <div class="mp-row">
+            <input id="impostor-mp-name" type="text" placeholder="Il tuo nome" />
+            <button id="impostor-host-btn" class="btn-mp">HOSTA</button>
+          </div>
+          <div class="mp-row">
+            <input id="impostor-join-code" type="text" placeholder="Codice stanza" />
+            <button id="impostor-join-btn" class="btn-mp ghost">ENTRA</button>
+          </div>
+          <div class="mp-room">
+            <span>CODICE STANZA</span>
+            <div id="impostor-room-code" class="mp-code">----</div>
+            <button id="impostor-copy-code" class="btn-mp tiny">COPIA</button>
+          </div>
+          <div id="impostor-roster" class="mp-roster"></div>
+        </div>
 
         <div class="divider"></div>
 
@@ -176,6 +198,23 @@
           <label for="surv-scenario">SCENARIO</label>
           <textarea id="surv-scenario" rows="2" placeholder="Es. Rifugio sotterraneo, nave in avaria, città in quarantena"></textarea>
         </div>
+        <div id="surv-mp" class="mp-panel">
+          <div class="mp-title">MULTI DISPOSITIVI</div>
+          <div class="mp-row">
+            <input id="surv-mp-name" type="text" placeholder="Il tuo nome" />
+            <button id="surv-host-btn" class="btn-mp">HOSTA</button>
+          </div>
+          <div class="mp-row">
+            <input id="surv-join-code" type="text" placeholder="Codice stanza" />
+            <button id="surv-join-btn" class="btn-mp ghost">ENTRA</button>
+          </div>
+          <div class="mp-room">
+            <span>CODICE STANZA</span>
+            <div id="surv-room-code" class="mp-code">----</div>
+            <button id="surv-copy-code" class="btn-mp tiny">COPIA</button>
+          </div>
+          <div id="surv-roster" class="mp-roster"></div>
+        </div>
         <button id="surv-start-btn" class="btn-survivor-action">AVVIA SIMULAZIONE</button>
       </section>
 
@@ -262,6 +301,9 @@
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="/realtime.js"></script>
+  <script src="/mode.js"></script>
   <script src="/app.js"></script>
   <script src="/survivor.js"></script>
   <script>

@@ -41,6 +41,14 @@ const btnEnter = document.getElementById('btn-enter');
 const btnBack = document.getElementById('btn-back-home');
 const landing = document.getElementById('landing');
 const gameFlow = document.getElementById('game-flow');
+const mpPanel = document.getElementById('impostor-mp');
+const mpNameInput = document.getElementById('impostor-mp-name');
+const mpHostBtn = document.getElementById('impostor-host-btn');
+const mpJoinCodeInput = document.getElementById('impostor-join-code');
+const mpJoinBtn = document.getElementById('impostor-join-btn');
+const mpRoomCode = document.getElementById('impostor-room-code');
+const mpCopyBtn = document.getElementById('impostor-copy-code');
+const mpRoster = document.getElementById('impostor-roster');
 
 const panels = [setupPanel, revealPanel, startPanel];
 const minPlayers = 3;
@@ -50,6 +58,24 @@ let generatedWord = '';
 let roles = [];
 let currentIndex = 0;
 let sheetContext = null;
+let mpState = {
+  isHost: false,
+  roomCode: '',
+  name: '',
+  playerId: '',
+  roster: []
+};
+
+function isMultiMode() {
+  return window.GP_MODE === 'multi';
+}
+
+function createPlayerId() {
+  if (window.crypto && window.crypto.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+  return Math.random().toString(36).slice(2);
+}
 
 function clampNumber(value, min, max) {
   if (Number.isNaN(value)) return min;
@@ -197,6 +223,9 @@ function handleSheetClose() {
   if (sheetContext === 'role') {
     nextPlayerButton.disabled = false;
   }
+  if (sheetContext === 'mp-role') {
+    setActivePanel(startPanel);
+  }
   sheetContext = null;
 }
 
@@ -218,11 +247,116 @@ function resetGame() {
   }
 
   setActivePanel(setupPanel);
+
+  if (isMultiMode() && mpState.isHost && window.GPRealtime) {
+    window.GPRealtime.send('impostor', {
+      type: 'impostor',
+      action: 'reset',
+      senderId: mpState.playerId
+    });
+  }
+}
+
+function updateMpRoster(players) {
+  if (!mpRoster) return;
+  mpRoster.innerHTML = '';
+  players.forEach((player) => {
+    const row = document.createElement('div');
+    row.className = 'mp-player';
+    row.textContent = player.name || 'Giocatore';
+    mpRoster.appendChild(row);
+  });
+}
+
+function applyRosterToInputs(players) {
+  const names = players.map((player) => player.name || 'Giocatore');
+  playerCountInput.value = names.length || minPlayers;
+  renderPlayerInputs(names.length || minPlayers);
+  const inputs = playerList.querySelectorAll('input');
+  inputs.forEach((input, index) => {
+    input.value = names[index] || '';
+    input.disabled = true;
+  });
+  playerCountInput.disabled = true;
+  syncImpostorMax(names.length || minPlayers);
+}
+
+function unlockHostControls(isHost) {
+  generateWordButton.disabled = !isHost;
+  startRolesButton.disabled = !isHost || !generatedWord;
+  impostorCountInput.disabled = !isHost;
+  if (!isHost) {
+    setWordStatus('In attesa host...');
+  }
+}
+
+function connectImpostorRoom(roomCode, name, isHost) {
+  if (!window.GPRealtime) return;
+  mpState.playerId = createPlayerId();
+  mpState.name = name;
+  mpState.isHost = isHost;
+  mpState.roomCode = roomCode;
+
+  if (mpRoomCode) mpRoomCode.textContent = roomCode;
+
+  window.GPRealtime.connect('impostor', roomCode, {
+    id: mpState.playerId,
+    name,
+    isHost
+  }, {
+    onPresence: (players) => {
+      mpState.roster = players;
+      updateMpRoster(players);
+      if (mpState.isHost) {
+        applyRosterToInputs(players);
+        unlockHostControls(true);
+      }
+    },
+    onMessage: (payload) => {
+      if (payload?.senderId && payload.senderId === mpState.playerId) return;
+      if (!payload || payload.type !== 'impostor') return;
+      if (payload.action === 'start') {
+        generatedWord = payload.word || '';
+        roles = payload.roles || [];
+        const myRole = roles.find((entry) => entry.name === mpState.name);
+        if (myRole) {
+          if (myRole.role === 'impostore') {
+            openSheet('IL TUO RUOLO', 'IMPOSTORE\n\nNon conosci la parola.\nCerca di non farti scoprire.', 'mp-role');
+          } else {
+            openSheet('IL TUO RUOLO', `CITTADINO\n\nParola Segreta:\n${generatedWord}`, 'mp-role');
+          }
+        }
+        setActivePanel(startPanel);
+      }
+      if (payload.action === 'impostors') {
+        const list = payload.impostors?.length ? payload.impostors.join(', ') : 'Nessuno';
+        openSheet('VERITA?', `Gli Impostori erano:\n${list}`, 'impostors');
+      }
+      if (payload.action === 'reset') {
+        resetGame();
+      }
+    }
+  });
+}
+
+function updateModeUI() {
+  const isMulti = isMultiMode();
+  if (!isMulti) {
+    playerCountInput.disabled = false;
+    impostorCountInput.disabled = false;
+    renderPlayerInputs(parseInt(playerCountInput.value, 10));
+    unlockHostControls(true);
+    return;
+  }
+  unlockHostControls(Boolean(mpState.isHost));
+  playerCountInput.disabled = true;
+  impostorCountInput.disabled = !mpState.isHost;
 }
 
 // HANDLERS
 
 playerCountInput.addEventListener('input', () => {
+  if (isMultiMode()) return;
   const value = clampNumber(
     parseInt(playerCountInput.value, 10),
     minPlayers,
@@ -240,7 +374,47 @@ modeInputs.forEach((input) => {
   input.addEventListener('change', updateModeFields);
 });
 
+if (mpHostBtn) {
+  mpHostBtn.addEventListener('click', () => {
+    if (!window.GPRealtime) return;
+    const name = (mpNameInput?.value || '').trim() || 'Host';
+    const code = window.GPRealtime.createRoomCode();
+    connectImpostorRoom(code, name, true);
+    unlockHostControls(true);
+  });
+}
+
+if (mpJoinBtn) {
+  mpJoinBtn.addEventListener('click', () => {
+    if (!window.GPRealtime) return;
+    const code = (mpJoinCodeInput?.value || '').trim().toUpperCase();
+    if (!code) return;
+    const name = (mpNameInput?.value || '').trim() || 'Giocatore';
+    connectImpostorRoom(code, name, false);
+    unlockHostControls(false);
+  });
+}
+
+if (mpCopyBtn) {
+  mpCopyBtn.addEventListener('click', () => {
+    if (!mpRoomCode) return;
+    const code = mpRoomCode.textContent.trim();
+    if (!code || code === '----') return;
+    navigator.clipboard?.writeText(code);
+  });
+}
+
+window.addEventListener('gp:modechange', (event) => {
+  if (event?.detail?.mode === 'single' && window.GPRealtime) {
+    window.GPRealtime.disconnect('impostor');
+    mpState = { isHost: false, roomCode: '', name: '', playerId: '', roster: [] };
+    updateMpRoster([]);
+  }
+  updateModeUI();
+});
+
 generateWordButton.addEventListener('click', async () => {
+  if (isMultiMode() && !mpState.isHost) return;
   clearError(wordError);
   const mode = getSelectedMode();
   const topic = topicInput.value.trim();
@@ -299,6 +473,7 @@ generateWordButton.addEventListener('click', async () => {
 
 startRolesButton.addEventListener('click', () => {
   clearError(setupError);
+  if (isMultiMode() && !mpState.isHost) return;
   const names = getPlayerNames();
 
   if (!generatedWord) {
@@ -317,6 +492,25 @@ startRolesButton.addEventListener('click', () => {
   updateRevealScreen();
   setActivePanel(revealPanel);
   window.scrollTo(0, 0);
+
+  if (isMultiMode() && mpState.isHost && window.GPRealtime) {
+    window.GPRealtime.send('impostor', {
+      type: 'impostor',
+      action: 'start',
+      word: generatedWord,
+      roles,
+      senderId: mpState.playerId
+    });
+    const myRole = roles.find((entry) => entry.name === mpState.name);
+    if (myRole) {
+      if (myRole.role === 'impostore') {
+        openSheet('IL TUO RUOLO', 'IMPOSTORE\n\nNon conosci la parola.\nCerca di non farti scoprire.', 'mp-role');
+      } else {
+        openSheet('IL TUO RUOLO', `CITTADINO\n\nParola Segreta:\n${generatedWord}`, 'mp-role');
+      }
+    }
+    setActivePanel(startPanel);
+  }
 });
 
 revealRoleButton.addEventListener('click', () => {
@@ -344,7 +538,15 @@ revealImpostorsButton.addEventListener('click', () => {
     .filter((entry) => entry.role === 'impostore')
     .map((entry) => entry.name);
   const list = impostors.length ? impostors.join(', ') : 'Nessuno';
-  openSheet('VERITÀ', `Gli Impostori erano:\n${list}`, 'impostors');
+  openSheet('VERITA?', `Gli Impostori erano:\n${list}`, 'impostors');
+  if (isMultiMode() && mpState.isHost && window.GPRealtime) {
+    window.GPRealtime.send('impostor', {
+      type: 'impostor',
+      action: 'impostors',
+      impostors,
+      senderId: mpState.playerId
+    });
+  }
 });
 
 if (restartGameButton) restartGameButton.addEventListener('click', resetGame);
@@ -385,3 +587,4 @@ scrim.addEventListener('click', () => {
 renderPlayerInputs(parseInt(playerCountInput.value, 10));
 syncImpostorMax(parseInt(playerCountInput.value, 10));
 updateModeFields();
+updateModeUI();

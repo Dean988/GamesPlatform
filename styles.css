@@ -140,6 +140,36 @@ html {
   margin-top: 8px;
 }
 
+.mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.mode-btn {
+  border: none;
+  padding: 10px 12px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.mode-btn.is-active {
+  background: var(--accent);
+  color: #000;
+  box-shadow: 0 6px 16px rgba(255, 208, 70, 0.35);
+}
+
 .hero-visual-container {
   position: relative;
   flex: 1;
@@ -358,6 +388,105 @@ input:focus {
   height: 1px;
   background: var(--border);
   margin: 24px 0;
+}
+
+/* MULTIPLAYER PANEL */
+.mp-panel {
+  border: 1px solid var(--border);
+  background: rgba(10, 10, 10, 0.8);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+body[data-mode="multi"] .mp-panel {
+  display: flex;
+}
+
+body[data-mode="single"] .mp-panel {
+  display: none;
+}
+
+.mp-title {
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  color: var(--accent);
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.mp-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+
+.mp-row input {
+  width: 100%;
+  background: #0e0e0e;
+  border: 1px solid var(--border);
+  color: #fff;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+}
+
+.btn-mp {
+  border: none;
+  background: var(--accent);
+  color: #000;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+}
+
+.btn-mp.ghost {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.btn-mp.tiny {
+  padding: 6px 10px;
+  font-size: 0.6rem;
+}
+
+.mp-room {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.65rem;
+  letter-spacing: 0.18em;
+  color: var(--text-muted);
+}
+
+.mp-code {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  color: #fff;
+}
+
+.mp-roster {
+  display: grid;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: #fff;
+}
+
+.mp-roster .mp-player {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(20, 20, 20, 0.9);
 }
 
 /* MODE SELECTOR */

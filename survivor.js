@@ -466,6 +466,7 @@ document.addEventListener('DOMContentLoaded', () => {
             itemLuck: 0,
             itemPools: initItemPools(),
             currentOptions: [],
+            currentQuestion: '',
             pendingChoices: [],
             choiceOrder: [],
             activeChoiceIndex: 0,
@@ -478,6 +479,21 @@ document.addEventListener('DOMContentLoaded', () => {
     function formatSigned(value) {
         if (!value) return '0';
         return value > 0 ? `+${value}` : `${value}`;
+    }
+
+    function isMultiMode() {
+        return window.GP_MODE === 'multi';
+    }
+
+    function createPlayerId() {
+        if (window.crypto && window.crypto.randomUUID) {
+            return window.crypto.randomUUID();
+        }
+        return Math.random().toString(36).slice(2);
+    }
+
+    function findPlayerIndexById(playerId) {
+        return gameState.players.findIndex((player) => player.id === playerId);
     }
 
     function getLifeTotals() {
@@ -519,6 +535,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const listSurvPlayers = document.getElementById('surv-players-list');
     const inpSurvScenario = document.getElementById('surv-scenario');
     const btnStartSurv = document.getElementById('surv-start-btn');
+    const survMpPanel = document.getElementById('surv-mp');
+    const survMpName = document.getElementById('surv-mp-name');
+    const survMpHost = document.getElementById('surv-host-btn');
+    const survMpJoinCode = document.getElementById('surv-join-code');
+    const survMpJoin = document.getElementById('surv-join-btn');
+    const survMpRoom = document.getElementById('surv-room-code');
+    const survMpCopy = document.getElementById('surv-copy-code');
+    const survMpRoster = document.getElementById('surv-roster');
 
     const narrativeText = document.getElementById('surv-narrative-text');
     const ttsReplayBtn = document.getElementById('surv-tts-btn');
@@ -553,6 +577,13 @@ document.addEventListener('DOMContentLoaded', () => {
     let gameState = createGameState();
     let lastNarrativeText = '';
     let lastNarrativeContext = {};
+    let survMpState = {
+        isHost: false,
+        roomCode: '',
+        name: '',
+        playerId: '',
+        roster: []
+    };
 
     // --- NAVIGATION ---
 
@@ -590,6 +621,41 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+    if (survMpHost) {
+        survMpHost.addEventListener('click', () => {
+            if (!window.GPRealtime) return;
+            const name = (survMpName?.value || '').trim() || 'Host';
+            const code = window.GPRealtime.createRoomCode();
+            connectSurvivorRoom(code, name, true);
+            updateSurvModeUI();
+        });
+    }
+    if (survMpJoin) {
+        survMpJoin.addEventListener('click', () => {
+            if (!window.GPRealtime) return;
+            const code = (survMpJoinCode?.value || '').trim().toUpperCase();
+            if (!code) return;
+            const name = (survMpName?.value || '').trim() || 'Sopravvissuto';
+            connectSurvivorRoom(code, name, false);
+            updateSurvModeUI();
+        });
+    }
+    if (survMpCopy) {
+        survMpCopy.addEventListener('click', () => {
+            if (!survMpRoom) return;
+            const code = survMpRoom.textContent.trim();
+            if (!code || code === '----') return;
+            navigator.clipboard?.writeText(code);
+        });
+    }
+    window.addEventListener('gp:modechange', (event) => {
+        if (event?.detail?.mode === 'single' && window.GPRealtime) {
+            window.GPRealtime.disconnect('survivor');
+            survMpState = { isHost: false, roomCode: '', name: '', playerId: '', roster: [] };
+            updateSurvRoster([]);
+        }
+        updateSurvModeUI();
+    });
 
     function setupSurvTabs() {
         if (!survTabs.length) return;
@@ -610,6 +676,163 @@ document.addEventListener('DOMContentLoaded', () => {
         if (activeTab) activeTab.classList.add('is-active');
     }
 
+    function updateSurvRoster(players) {
+        if (!survMpRoster) return;
+        survMpRoster.innerHTML = '';
+        players.forEach((player) => {
+            const row = document.createElement('div');
+            row.className = 'mp-player';
+            row.textContent = player.name || 'Giocatore';
+            survMpRoster.appendChild(row);
+        });
+    }
+
+    function applySurvRoster(players) {
+        const names = players.map((player) => player.name || 'Giocatore');
+        if (inpSurvCount) {
+            inpSurvCount.value = names.length || 1;
+            inpSurvCount.disabled = true;
+        }
+        if (listSurvPlayers) {
+            listSurvPlayers.innerHTML = '';
+            names.forEach((name, index) => {
+                const div = document.createElement('div');
+                div.className = 'field';
+                const input = document.createElement('input');
+                input.placeholder = `Sopravvissuto ${index + 1}`;
+                input.value = name;
+                input.disabled = true;
+                div.appendChild(input);
+                listSurvPlayers.appendChild(div);
+            });
+        }
+    }
+
+    function connectSurvivorRoom(roomCode, name, isHost) {
+        if (!window.GPRealtime) return;
+        survMpState.playerId = createPlayerId();
+        survMpState.name = name;
+        survMpState.isHost = isHost;
+        survMpState.roomCode = roomCode;
+        if (survMpRoom) survMpRoom.textContent = roomCode;
+
+        window.GPRealtime.connect('survivor', roomCode, {
+            id: survMpState.playerId,
+            name,
+            isHost
+        }, {
+            onPresence: (players) => {
+                survMpState.roster = players;
+                updateSurvRoster(players);
+                if (survMpState.isHost) {
+                    applySurvRoster(players);
+                    if (gameState.currentOptions.length) {
+                        broadcastSurvState();
+                    }
+                }
+            },
+            onMessage: (payload) => {
+                if (payload?.senderId && payload.senderId === survMpState.playerId) return;
+                if (!payload || payload.type !== 'survivor') return;
+                if (payload.action === 'state') {
+                    applyRemoteState(payload.state);
+                }
+                if (payload.action === 'choice' && survMpState.isHost) {
+                    registerRemoteChoice(payload.choice);
+                }
+            }
+        });
+    }
+
+    function updateSurvModeUI() {
+        const isMulti = isMultiMode();
+        if (!isMulti) {
+            if (inpSurvCount) inpSurvCount.disabled = false;
+            renderPlayerInputs();
+            return;
+        }
+        if (inpSurvCount) inpSurvCount.disabled = true;
+    }
+
+    function serializeSurvState() {
+        return {
+            turn: gameState.turn,
+            maxTurns: gameState.maxTurns,
+            score: gameState.score,
+            history: gameState.history,
+            scenarioPrompt: gameState.scenarioPrompt,
+            currentQuestion: gameState.currentQuestion,
+            currentOptions: gameState.currentOptions,
+            pendingChoices: gameState.pendingChoices,
+            players: gameState.players,
+            waitingForResolution: gameState.waitingForResolution,
+            isGameOver: gameState.isGameOver,
+            lastNarrative: lastNarrativeText
+        };
+    }
+
+    function broadcastSurvState() {
+        if (!isMultiMode() || !survMpState.isHost || !window.GPRealtime) return;
+        window.GPRealtime.send('survivor', {
+            type: 'survivor',
+            action: 'state',
+            state: serializeSurvState(),
+            senderId: survMpState.playerId
+        });
+    }
+
+    function applyRemoteState(state) {
+        if (!state) return;
+        gameState.turn = state.turn || 1;
+        gameState.maxTurns = state.maxTurns || gameState.maxTurns;
+        gameState.score = state.score || 0;
+        gameState.history = state.history || '';
+        gameState.scenarioPrompt = state.scenarioPrompt || '';
+        gameState.currentQuestion = state.currentQuestion || '';
+        gameState.currentOptions = Array.isArray(state.currentOptions) ? state.currentOptions : [];
+        gameState.pendingChoices = Array.isArray(state.pendingChoices) ? state.pendingChoices : [];
+        gameState.players = Array.isArray(state.players) ? state.players : [];
+        gameState.waitingForResolution = Boolean(state.waitingForResolution);
+        gameState.isGameOver = Boolean(state.isGameOver);
+        if (state.lastNarrative) {
+            lastNarrativeText = state.lastNarrative;
+            narrativeText.textContent = state.lastNarrative;
+        }
+        questionText.textContent = gameState.currentQuestion || 'Decisione richiesta.';
+        renderOptions(gameState.currentOptions);
+        updateHUD();
+        renderChoiceList();
+        updateChoiceStatus();
+        if (isMultiMode() && !survMpState.isHost) {
+            const chosen = gameState.pendingChoices.some((entry) => entry.playerId === survMpState.playerId);
+            setOptionsDisabled(chosen || gameState.waitingForResolution);
+        }
+    }
+
+    function registerRemoteChoice(choice) {
+        if (!choice || !survMpState.isHost) return;
+        if (gameState.pendingChoices.some((entry) => entry.playerId === choice.playerId)) return;
+        const playerIndex = findPlayerIndexById(choice.playerId);
+        if (playerIndex < 0) return;
+        gameState.pendingChoices.push({
+            ...choice,
+            playerIndex,
+            player: gameState.players[playerIndex]?.name || choice.player
+        });
+        renderChoiceList();
+        updateChoiceStatus();
+        broadcastSurvState();
+        checkMultiResolution();
+    }
+
+    function checkMultiResolution() {
+        if (!isMultiMode() || !survMpState.isHost) return;
+        const alive = getAlivePlayerIndices().length;
+        if (alive > 0 && gameState.pendingChoices.length >= alive) {
+            requestTurnOutcome(gameState.pendingChoices);
+        }
+    }
+
     // --- SETUP LOGIC ---
 
     function initSetup() {
@@ -624,11 +847,13 @@ document.addEventListener('DOMContentLoaded', () => {
         questionText.textContent = 'Attendere...';
         narrativeText.textContent = 'Inizializzazione sistema...';
         optionsGrid.innerHTML = '';
+        updateSurvModeUI();
     }
 
     inpSurvCount.addEventListener('input', renderPlayerInputs);
 
     function renderPlayerInputs() {
+        if (isMultiMode()) return;
         const count = clampNumber(parseInt(inpSurvCount.value, 10) || 1, 1, 8);
         listSurvPlayers.innerHTML = '';
         for (let i = 0; i < count; i++) {
@@ -644,18 +869,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
     btnStartSurv.addEventListener('click', async () => {
         await unlockAudio();
-        const pCount = clampNumber(parseInt(inpSurvCount.value, 10) || 1, 1, 8);
         gameState = createGameState();
         gameState.players = [];
-        for (let i = 0; i < pCount; i++) {
-            const name = document.getElementById(`surv-p-${i}`).value.trim() || `Sopravvissuto ${i + 1}`;
-            gameState.players.push({
-                name,
-                inventory: [],
-                life: START_LIVES,
-                maxLife: START_LIVES,
-                shield: 0
+        if (isMultiMode()) {
+            if (!survMpState.isHost) {
+                showItemNotification('Solo host puo avviare la partita.');
+                return;
+            }
+            if (!survMpState.roster.length) {
+                showItemNotification('Nessun giocatore connesso.');
+                return;
+            }
+            survMpState.roster.forEach((player, index) => {
+                const name = player.name || `Sopravvissuto ${index + 1}`;
+                gameState.players.push({
+                    id: player.id,
+                    name,
+                    inventory: [],
+                    life: START_LIVES,
+                    maxLife: START_LIVES,
+                    shield: 0
+                });
             });
+        } else {
+            const pCount = clampNumber(parseInt(inpSurvCount.value, 10) || 1, 1, 8);
+            for (let i = 0; i < pCount; i++) {
+                const name = document.getElementById(`surv-p-${i}`).value.trim() || `Sopravvissuto ${i + 1}`;
+                gameState.players.push({
+                    name,
+                    inventory: [],
+                    life: START_LIVES,
+                    maxLife: START_LIVES,
+                    shield: 0
+                });
+            }
         }
         gameState.maxTurns = clampNumber(parseInt(inpSurvTurns.value, 10) || 8, 8, 20);
         gameState.turn = 1;
@@ -801,6 +1048,11 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        if (isMultiMode()) {
+            choicePlayerLabel.textContent = done < total ? 'In attesa scelte...' : 'Elaborazione...';
+            return;
+        }
+
         if (done < total) {
             const currentIndex = gameState.choiceOrder[gameState.activeChoiceIndex];
             const current = gameState.players[currentIndex];
@@ -853,8 +1105,9 @@ document.addEventListener('DOMContentLoaded', () => {
         gameState.choiceOrder = getAlivePlayerIndices();
         gameState.activeChoiceIndex = 0;
         gameState.waitingForResolution = false;
+        gameState.currentQuestion = question || 'Decisione richiesta.';
 
-        questionText.textContent = question || 'Decisione richiesta.';
+        questionText.textContent = gameState.currentQuestion;
         renderOptions(gameState.currentOptions);
         updateChoiceStatus();
         renderChoiceList();
@@ -862,6 +1115,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (gameState.choiceOrder.length === 0) {
             questionText.textContent = 'Nessun sopravvissuto attivo.';
             optionsGrid.innerHTML = '';
+        }
+        if (isMultiMode() && survMpState.isHost) {
+            broadcastSurvState();
         }
     }
 
@@ -875,9 +1131,15 @@ document.addEventListener('DOMContentLoaded', () => {
     async function handleOptionClick(option, index) {
         if (gameState.waitingForResolution || gameState.isRolling) return;
         unlockAudio();
-        const playerIndex = gameState.choiceOrder[gameState.activeChoiceIndex];
+        const multiMode = isMultiMode();
+        const playerIndex = multiMode
+            ? findPlayerIndexById(survMpState.playerId)
+            : gameState.choiceOrder[gameState.activeChoiceIndex];
         const player = gameState.players[playerIndex];
         if (!player) return;
+        if (multiMode && gameState.pendingChoices.some((entry) => entry.playerId === survMpState.playerId)) {
+            return;
+        }
 
         const optionId = option.id || String.fromCharCode(65 + index);
         const requiresRoll = Boolean(option.requiresRoll);
@@ -892,7 +1154,8 @@ document.addEventListener('DOMContentLoaded', () => {
             gameState.isRolling = false;
         }
 
-        gameState.pendingChoices.push({
+        const choicePayload = {
+            playerId: survMpState.playerId,
             playerIndex,
             player: player.name,
             optionId,
@@ -900,7 +1163,28 @@ document.addEventListener('DOMContentLoaded', () => {
             requiresRoll,
             roll,
             rollDC
-        });
+        };
+
+        if (multiMode) {
+            gameState.pendingChoices.push(choicePayload);
+            updateChoiceStatus();
+            renderChoiceList();
+            lockOptions();
+            if (survMpState.isHost) {
+                broadcastSurvState();
+                checkMultiResolution();
+            } else if (window.GPRealtime) {
+                window.GPRealtime.send('survivor', {
+                    type: 'survivor',
+                    action: 'choice',
+                    choice: choicePayload,
+                    senderId: survMpState.playerId
+                });
+            }
+            return;
+        }
+
+        gameState.pendingChoices.push(choicePayload);
         gameState.activeChoiceIndex += 1;
 
         updateChoiceStatus();
@@ -1044,11 +1328,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const historyLine = outcomeBits.length ? `${narrativeBlock} | ${outcomeBits.join(', ')}` : narrativeBlock;
         gameState.history += `\nESITO TURNO ${gameState.turn}: ${historyLine}`;
+
+        if (isMultiMode() && survMpState.isHost) {
+            broadcastSurvState();
+        }
     }
 
     async function requestTurnOutcome(choices) {
+        if (isMultiMode() && !survMpState.isHost) return;
         gameState.waitingForResolution = true;
         setLoadingState('Calcolo esito...');
+        if (isMultiMode() && survMpState.isHost) {
+            broadcastSurvState();
+        }
 
         try {
             const finaleRequired = choices.length > 0 && gameState.turn >= gameState.maxTurns;
