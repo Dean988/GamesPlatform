@@ -726,7 +726,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateSurvRoster(players);
                 if (survMpState.isHost) {
                     applySurvRoster(players);
-                    if (gameState.currentOptions.length) {
+                    if (gameState.players.length > 0) {
                         broadcastSurvState();
                     }
                 }
@@ -746,12 +746,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateSurvModeUI() {
         const isMulti = isMultiMode();
+        const isHost = survMpState.isHost;
         if (!isMulti) {
             if (inpSurvCount) inpSurvCount.disabled = false;
+            if (inpSurvTurns) inpSurvTurns.disabled = false;
+            if (inpSurvScenario) inpSurvScenario.disabled = false;
+            if (btnStartSurv) btnStartSurv.disabled = false;
             renderPlayerInputs();
             return;
         }
         if (inpSurvCount) inpSurvCount.disabled = true;
+        if (inpSurvTurns) inpSurvTurns.disabled = !isHost;
+        if (inpSurvScenario) inpSurvScenario.disabled = !isHost;
+        if (btnStartSurv) btnStartSurv.disabled = !isHost;
     }
 
     function serializeSurvState() {
@@ -803,6 +810,13 @@ document.addEventListener('DOMContentLoaded', () => {
         updateHUD();
         renderChoiceList();
         updateChoiceStatus();
+        if (isMultiMode() && !survMpState.isHost) {
+            if (state.isGameOver) {
+                showPanel(sectionResult);
+            } else {
+                showPanel(sectionGame);
+            }
+        }
         if (isMultiMode() && !survMpState.isHost) {
             const chosen = gameState.pendingChoices.some((entry) => entry.playerId === survMpState.playerId);
             setOptionsDisabled(chosen || gameState.waitingForResolution);
@@ -914,6 +928,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         updateHUD();
         showPanel(sectionGame);
+        if (isMultiMode() && survMpState.isHost) {
+            broadcastSurvState();
+        }
         await requestTurnOutcome([]);
     });
 
