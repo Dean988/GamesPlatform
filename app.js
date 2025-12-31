@@ -49,6 +49,7 @@ const mpJoinBtn = document.getElementById('impostor-join-btn');
 const mpRoomCode = document.getElementById('impostor-room-code');
 const mpCopyBtn = document.getElementById('impostor-copy-code');
 const mpRoster = document.getElementById('impostor-roster');
+const mpError = document.getElementById('impostor-mp-error');
 
 const panels = [setupPanel, revealPanel, startPanel];
 const minPlayers = 3;
@@ -147,6 +148,28 @@ function clearError(target) {
   if (!target) return;
   target.textContent = '';
   target.classList.add('is-hidden');
+}
+
+function showMpError(message) {
+  if (!mpError) return;
+  mpError.textContent = message;
+  mpError.classList.remove('is-hidden');
+}
+
+function clearMpError() {
+  if (!mpError) return;
+  mpError.textContent = '';
+  mpError.classList.add('is-hidden');
+}
+
+function getRequiredMpName() {
+  const name = (mpNameInput?.value || '').trim();
+  if (!name) {
+    showMpError('Inserisci il tuo nome.');
+    return null;
+  }
+  clearMpError();
+  return name;
 }
 
 function setWordStatus(message) {
@@ -377,7 +400,8 @@ modeInputs.forEach((input) => {
 if (mpHostBtn) {
   mpHostBtn.addEventListener('click', () => {
     if (!window.GPRealtime) return;
-    const name = (mpNameInput?.value || '').trim() || 'Host';
+    const name = getRequiredMpName();
+    if (!name) return;
     const code = window.GPRealtime.createRoomCode();
     connectImpostorRoom(code, name, true);
     unlockHostControls(true);
@@ -387,9 +411,14 @@ if (mpHostBtn) {
 if (mpJoinBtn) {
   mpJoinBtn.addEventListener('click', () => {
     if (!window.GPRealtime) return;
+    const name = getRequiredMpName();
+    if (!name) return;
     const code = (mpJoinCodeInput?.value || '').trim().toUpperCase();
-    if (!code) return;
-    const name = (mpNameInput?.value || '').trim() || 'Giocatore';
+    if (!code) {
+      showMpError('Inserisci il codice stanza.');
+      return;
+    }
+    clearMpError();
     connectImpostorRoom(code, name, false);
     unlockHostControls(false);
   });
@@ -410,8 +439,13 @@ window.addEventListener('gp:modechange', (event) => {
     mpState = { isHost: false, roomCode: '', name: '', playerId: '', roster: [] };
     updateMpRoster([]);
   }
+  clearMpError();
   updateModeUI();
 });
+
+if (mpNameInput) {
+  mpNameInput.addEventListener('input', clearMpError);
+}
 
 generateWordButton.addEventListener('click', async () => {
   if (isMultiMode() && !mpState.isHost) return;

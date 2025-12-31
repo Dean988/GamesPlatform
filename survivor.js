@@ -445,11 +445,31 @@ document.addEventListener('DOMContentLoaded', () => {
         return pools;
     }
 
+    function createInstanceId() {
+        if (window.crypto && window.crypto.randomUUID) {
+            return window.crypto.randomUUID();
+        }
+        return Math.random().toString(36).slice(2);
+    }
+
     function cloneItem(item) {
         return {
             ...item,
+            instanceId: createInstanceId(),
             actions: item.actions ? item.actions.map((action) => ({ ...action })) : []
         };
+    }
+
+    function ensureItemInstanceIds() {
+        if (!Array.isArray(gameState.players)) return;
+        gameState.players.forEach((player) => {
+            if (!Array.isArray(player?.inventory)) return;
+            player.inventory.forEach((item) => {
+                if (!item.instanceId) {
+                    item.instanceId = createInstanceId();
+                }
+            });
+        });
     }
 
     function createGameState() {
@@ -543,6 +563,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const survMpRoom = document.getElementById('surv-room-code');
     const survMpCopy = document.getElementById('surv-copy-code');
     const survMpRoster = document.getElementById('surv-roster');
+    const survMpError = document.getElementById('surv-mp-error');
 
     const narrativeText = document.getElementById('surv-narrative-text');
     const ttsReplayBtn = document.getElementById('surv-tts-btn');
@@ -575,7 +596,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // STATE
     let selectedItem = null;
     let gameState = createGameState();
+    const SURV_SAVE_KEY = 'surv-save';
     let lastNarrativeText = '';
+    let lastNarrativeDisplay = '';
     let lastNarrativeContext = {};
     let survMpState = {
         isHost: false,
@@ -606,6 +629,7 @@ document.addEventListener('DOMContentLoaded', () => {
             survivorFlow.style.display = 'none';
             landing.style.display = 'flex';
             setTimeout(() => landing.classList.add('is-active'), 10);
+            persistSurvSave();
             stopAudio();
         });
     }
@@ -624,7 +648,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (survMpHost) {
         survMpHost.addEventListener('click', () => {
             if (!window.GPRealtime) return;
-            const name = (survMpName?.value || '').trim() || 'Host';
+            const name = getRequiredSurvMpName();
+            if (!name) return;
             const code = window.GPRealtime.createRoomCode();
             connectSurvivorRoom(code, name, true);
             updateSurvModeUI();
@@ -633,9 +658,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (survMpJoin) {
         survMpJoin.addEventListener('click', () => {
             if (!window.GPRealtime) return;
+            const name = getRequiredSurvMpName();
+            if (!name) return;
             const code = (survMpJoinCode?.value || '').trim().toUpperCase();
-            if (!code) return;
-            const name = (survMpName?.value || '').trim() || 'Sopravvissuto';
+            if (!code) {
+                showSurvMpError('Inserisci il codice stanza.');
+                return;
+            }
+            clearSurvMpError();
             connectSurvivorRoom(code, name, false);
             updateSurvModeUI();
         });
@@ -655,7 +685,15 @@ document.addEventListener('DOMContentLoaded', () => {
             updateSurvRoster([]);
         }
         updateSurvModeUI();
+        persistSurvSave();
+        clearSurvMpError();
     });
+
+    window.addEventListener('beforeunload', persistSurvSave);
+
+    if (survMpName) {
+        survMpName.addEventListener('input', clearSurvMpError);
+    }
 
     function setupSurvTabs() {
         if (!survTabs.length) return;
@@ -687,6 +725,28 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function showSurvMpError(message) {
+        if (!survMpError) return;
+        survMpError.textContent = message;
+        survMpError.classList.remove('is-hidden');
+    }
+
+    function clearSurvMpError() {
+        if (!survMpError) return;
+        survMpError.textContent = '';
+        survMpError.classList.add('is-hidden');
+    }
+
+    function getRequiredSurvMpName() {
+        const name = (survMpName?.value || '').trim();
+        if (!name) {
+            showSurvMpError('Inserisci il tuo nome.');
+            return null;
+        }
+        clearSurvMpError();
+        return name;
+    }
+
     function applySurvRoster(players) {
         const names = players.map((player) => player.name || 'Giocatore');
         if (inpSurvCount) {
@@ -708,9 +768,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function connectSurvivorRoom(roomCode, name, isHost) {
+    function connectSurvivorRoom(roomCode, name, isHost, playerId = '') {
         if (!window.GPRealtime) return;
-        survMpState.playerId = createPlayerId();
+        survMpState.playerId = playerId || createPlayerId();
         survMpState.name = name;
         survMpState.isHost = isHost;
         survMpState.roomCode = roomCode;
@@ -740,8 +800,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (payload.action === 'choice' && survMpState.isHost) {
                     registerRemoteChoice(payload.choice);
                 }
+                if (payload.action === 'item' && survMpState.isHost) {
+                    handleRemoteItemAction(payload.item);
+                }
             }
         });
+        persistSurvSave();
     }
 
     function updateSurvModeUI() {
@@ -761,20 +825,120 @@ document.addEventListener('DOMContentLoaded', () => {
         if (btnStartSurv) btnStartSurv.disabled = !isHost;
     }
 
+    function getActiveSurvPanel() {
+        if (sectionGame.classList.contains('is-visible')) return 'game';
+        if (sectionResult.classList.contains('is-visible')) return 'result';
+        return 'config';
+    }
+
+    function persistSurvSave() {
+        try {
+            const payload = {
+                mode: window.GP_MODE || 'single',
+                panel: getActiveSurvPanel(),
+                mpState: {
+                    roomCode: survMpState.roomCode,
+                    name: survMpState.name,
+                    playerId: survMpState.playerId,
+                    isHost: survMpState.isHost
+                },
+                gameState,
+                lastNarrativeText,
+                lastNarrativeDisplay,
+                lastNarrativeContext,
+                savedAt: Date.now()
+            };
+            localStorage.setItem(SURV_SAVE_KEY, JSON.stringify(payload));
+        } catch (error) {
+            console.error('Save failed', error);
+        }
+    }
+
+    function loadSurvSave() {
+        try {
+            const raw = localStorage.getItem(SURV_SAVE_KEY);
+            if (!raw) return null;
+            return JSON.parse(raw);
+        } catch (error) {
+            return null;
+        }
+    }
+
+    function clearSurvSave() {
+        localStorage.removeItem(SURV_SAVE_KEY);
+    }
+
+    function applySurvSave(save) {
+        if (!save?.gameState) return false;
+        gameState = { ...createGameState(), ...save.gameState };
+        if (!gameState.itemPools || !gameState.itemPools.comune) {
+            gameState.itemPools = initItemPools();
+        }
+        ensureItemInstanceIds();
+        lastNarrativeText = save.lastNarrativeText || '';
+        lastNarrativeDisplay = save.lastNarrativeDisplay || lastNarrativeText;
+        lastNarrativeContext = save.lastNarrativeContext || {};
+        if (lastNarrativeDisplay) {
+            narrativeText.textContent = lastNarrativeDisplay;
+        }
+        questionText.textContent = gameState.currentQuestion || 'Attendere...';
+        renderOptions(gameState.currentOptions || []);
+        updateHUD();
+        renderChoiceList();
+        updateChoiceStatus();
+        if (save.panel === 'result') {
+            showPanel(sectionResult);
+        } else if (save.panel === 'game') {
+            showPanel(sectionGame);
+        } else {
+            showPanel(sectionConfig);
+        }
+        return true;
+    }
+
+    function restoreSurvSession() {
+        const saved = loadSurvSave();
+        if (!saved) return false;
+        const savedMode = saved.mode || 'single';
+        if (savedMode === 'multi' && isMultiMode() && saved.mpState?.roomCode) {
+            if (survMpName) survMpName.value = saved.mpState.name || '';
+            if (survMpJoinCode) survMpJoinCode.value = saved.mpState.roomCode || '';
+            connectSurvivorRoom(
+                saved.mpState.roomCode,
+                saved.mpState.name || 'Sopravvissuto',
+                Boolean(saved.mpState.isHost),
+                saved.mpState.playerId || ''
+            );
+        }
+        if (saved.gameState) {
+            applySurvSave(saved);
+            updateSurvModeUI();
+            return true;
+        }
+        return false;
+    }
+
     function serializeSurvState() {
         return {
             turn: gameState.turn,
             maxTurns: gameState.maxTurns,
             score: gameState.score,
+            scoreMultiplier: gameState.scoreMultiplier,
+            scoreBoostTurns: gameState.scoreBoostTurns,
+            peekTokens: gameState.peekTokens,
+            itemLuck: gameState.itemLuck,
             history: gameState.history,
             scenarioPrompt: gameState.scenarioPrompt,
             currentQuestion: gameState.currentQuestion,
             currentOptions: gameState.currentOptions,
             pendingChoices: gameState.pendingChoices,
+            choiceOrder: gameState.choiceOrder,
+            activeChoiceIndex: gameState.activeChoiceIndex,
             players: gameState.players,
             waitingForResolution: gameState.waitingForResolution,
             isGameOver: gameState.isGameOver,
-            lastNarrative: lastNarrativeText
+            lastNarrativeDisplay,
+            lastNarrativeTts: lastNarrativeText
         };
     }
 
@@ -793,17 +957,29 @@ document.addEventListener('DOMContentLoaded', () => {
         gameState.turn = state.turn || 1;
         gameState.maxTurns = state.maxTurns || gameState.maxTurns;
         gameState.score = state.score || 0;
+        gameState.scoreMultiplier = toNumber(state.scoreMultiplier, gameState.scoreMultiplier || 1);
+        gameState.scoreBoostTurns = toNumber(state.scoreBoostTurns, gameState.scoreBoostTurns || 0);
+        gameState.peekTokens = toNumber(state.peekTokens, gameState.peekTokens || 0);
+        gameState.itemLuck = toNumber(state.itemLuck, gameState.itemLuck || 0);
         gameState.history = state.history || '';
         gameState.scenarioPrompt = state.scenarioPrompt || '';
         gameState.currentQuestion = state.currentQuestion || '';
         gameState.currentOptions = Array.isArray(state.currentOptions) ? state.currentOptions : [];
         gameState.pendingChoices = Array.isArray(state.pendingChoices) ? state.pendingChoices : [];
         gameState.players = Array.isArray(state.players) ? state.players : [];
+        ensureItemInstanceIds();
+        gameState.choiceOrder = Array.isArray(state.choiceOrder) ? state.choiceOrder : getAlivePlayerIndices();
+        gameState.activeChoiceIndex = Number.isInteger(state.activeChoiceIndex)
+            ? state.activeChoiceIndex
+            : gameState.activeChoiceIndex;
         gameState.waitingForResolution = Boolean(state.waitingForResolution);
         gameState.isGameOver = Boolean(state.isGameOver);
-        if (state.lastNarrative) {
-            lastNarrativeText = state.lastNarrative;
-            narrativeText.textContent = state.lastNarrative;
+        if (state.lastNarrativeDisplay || state.lastNarrativeTts || state.lastNarrative) {
+            lastNarrativeDisplay = state.lastNarrativeDisplay || state.lastNarrative || '';
+            lastNarrativeText = state.lastNarrativeTts || state.lastNarrativeDisplay || state.lastNarrative || '';
+            if (lastNarrativeDisplay) {
+                narrativeText.textContent = lastNarrativeDisplay;
+            }
         }
         questionText.textContent = gameState.currentQuestion || 'Decisione richiesta.';
         renderOptions(gameState.currentOptions);
@@ -821,6 +997,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const chosen = gameState.pendingChoices.some((entry) => entry.playerId === survMpState.playerId);
             setOptionsDisabled(chosen || gameState.waitingForResolution);
         }
+        persistSurvSave();
     }
 
     function registerRemoteChoice(choice) {
@@ -852,6 +1029,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function initSetup() {
         renderPlayerInputs();
         showPanel(sectionConfig);
+        if (restoreSurvSession()) {
+            updateSurvModeUI();
+            return;
+        }
         gameState = createGameState();
         updateHUD();
         closeItemPanel();
@@ -862,6 +1043,7 @@ document.addEventListener('DOMContentLoaded', () => {
         narrativeText.textContent = 'Inizializzazione sistema...';
         optionsGrid.innerHTML = '';
         updateSurvModeUI();
+        persistSurvSave();
     }
 
     inpSurvCount.addEventListener('input', renderPlayerInputs);
@@ -934,7 +1116,10 @@ document.addEventListener('DOMContentLoaded', () => {
         await requestTurnOutcome([]);
     });
 
-    btnRestartSurv.addEventListener('click', initSetup);
+    btnRestartSurv.addEventListener('click', () => {
+        clearSurvSave();
+        initSetup();
+    });
 
     // --- GAMEPLAY ---
 
@@ -954,9 +1139,11 @@ document.addEventListener('DOMContentLoaded', () => {
         renderInventories();
         updateChoiceStatus();
         renderChoiceList();
+        persistSurvSave();
     }
 
     function renderInventories() {
+        ensureItemInstanceIds();
         inventoryContainer.innerHTML = '';
         gameState.players.forEach((p, pIndex) => {
             const pDiv = document.createElement('div');
@@ -1136,6 +1323,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isMultiMode() && survMpState.isHost) {
             broadcastSurvState();
         }
+        persistSurvSave();
     }
 
     function lockOptions() {
@@ -1198,6 +1386,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     senderId: survMpState.playerId
                 });
             }
+            persistSurvSave();
             return;
         }
 
@@ -1334,11 +1523,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const narrativeBlock = narrativeLines.filter(Boolean).join('\n');
         const extra = outcomeBits.length ? `\n${outcomeBits.join(' | ')}` : '';
-        narrativeText.textContent = `${narrativeBlock}${extra}`;
+        const narrativeDisplay = `${narrativeBlock}${extra}`;
+        narrativeText.textContent = narrativeDisplay;
         const ttsContext = buildTtsContext(appliedScore, totalLifeDelta, itemsFound, choices);
-        lastNarrativeText = narrativeBlock;
+        const questionLine = data.question && !data.isGameOver
+            ? `\nDomanda: ${data.question}`
+            : '';
+        lastNarrativeDisplay = narrativeDisplay;
+        lastNarrativeText = `${narrativeBlock}${questionLine}`.trim();
         lastNarrativeContext = ttsContext;
-        speak(narrativeBlock, ttsContext);
+        speak(lastNarrativeText, ttsContext);
 
         if (choices.length) {
             gameState.history += `\nSCELTE TURNO ${gameState.turn}: ${summarizeChoices(choices)}`;
@@ -1349,6 +1543,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isMultiMode() && survMpState.isHost) {
             broadcastSurvState();
         }
+        persistSurvSave();
     }
 
     async function requestTurnOutcome(choices) {
@@ -1438,6 +1633,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const finaleText = finaleLines.length ? `\n\nEsiti finali:\n${finaleLines.join('\n')}` : '';
         const endNarrative = `Gioco terminato. ${data.narrative || ''}`;
         document.getElementById('surv-end-msg').textContent = `Punteggio Finale: ${gameState.score}\n${livesLine}\n\n${data.narrative || ''}${finaleText}`;
+        lastNarrativeDisplay = endNarrative;
         lastNarrativeText = endNarrative;
         lastNarrativeContext = {
             isGameOver: true,
@@ -1455,6 +1651,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (choiceList) choiceList.innerHTML = '';
         optionsGrid.innerHTML = '';
+        persistSurvSave();
     }
 
     // --- ITEM HANDLING ---
@@ -1465,7 +1662,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const item = owner && owner.inventory[itemIndex];
         if (!item) return;
 
-        selectedItem = { ownerIndex, itemIndex };
+        selectedItem = {
+            ownerIndex,
+            itemIndex,
+            ownerId: owner?.id || null,
+            instanceId: item.instanceId || null
+        };
         itemPanelTitle.textContent = `${item.name} - ${item.effectText}`;
         itemPanel.classList.remove('is-hidden');
         if (shareTargets) {
@@ -1511,7 +1713,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function transferSelectedItem(targetIndex) {
         if (!selectedItem) return;
-        const { ownerIndex, itemIndex } = selectedItem;
+        const { ownerIndex, itemIndex, ownerId, instanceId } = selectedItem;
+        if (isMultiMode() && !survMpState.isHost) {
+            if (window.GPRealtime) {
+                window.GPRealtime.send('survivor', {
+                    type: 'survivor',
+                    action: 'item',
+                    item: {
+                        itemAction: 'share',
+                        ownerId,
+                        ownerIndex,
+                        targetId: gameState.players[targetIndex]?.id || null,
+                        targetIndex,
+                        instanceId
+                    },
+                    senderId: survMpState.playerId
+                });
+            }
+            showItemNotification('Richiesta inviata all\'host.');
+            closeItemPanel();
+            return;
+        }
         const owner = gameState.players[ownerIndex];
         if (!owner || !owner.inventory[itemIndex]) {
             closeItemPanel();
@@ -1523,11 +1745,33 @@ document.addEventListener('DOMContentLoaded', () => {
         showItemNotification(`Oggetto condiviso: ${item.name} -> ${gameState.players[targetIndex].name}`);
         updateHUD();
         closeItemPanel();
+        if (isMultiMode() && survMpState.isHost) {
+            broadcastSurvState();
+        }
+        persistSurvSave();
     }
 
     function useSelectedItem() {
         if (!selectedItem) return;
-        const { ownerIndex, itemIndex } = selectedItem;
+        const { ownerIndex, itemIndex, ownerId, instanceId } = selectedItem;
+        if (isMultiMode() && !survMpState.isHost) {
+            if (window.GPRealtime) {
+                window.GPRealtime.send('survivor', {
+                    type: 'survivor',
+                    action: 'item',
+                    item: {
+                        itemAction: 'use',
+                        ownerId,
+                        ownerIndex,
+                        instanceId
+                    },
+                    senderId: survMpState.playerId
+                });
+            }
+            showItemNotification('Richiesta inviata all\'host.');
+            closeItemPanel();
+            return;
+        }
         const owner = gameState.players[ownerIndex];
         if (!owner || !owner.inventory[itemIndex]) {
             closeItemPanel();
@@ -1539,6 +1783,48 @@ document.addEventListener('DOMContentLoaded', () => {
         showItemNotification(`Usato: ${item.name}. ${item.effectText}`);
         updateHUD();
         closeItemPanel();
+        if (isMultiMode() && survMpState.isHost) {
+            broadcastSurvState();
+        }
+        persistSurvSave();
+    }
+
+    function resolvePlayerIndex(payload, idKey, indexKey) {
+        if (payload?.[idKey]) {
+            const idx = findPlayerIndexById(payload[idKey]);
+            if (idx >= 0) return idx;
+        }
+        if (Number.isInteger(payload?.[indexKey])) {
+            return clampNumber(payload[indexKey], 0, gameState.players.length - 1);
+        }
+        return -1;
+    }
+
+    function handleRemoteItemAction(action) {
+        if (!action || !survMpState.isHost) return;
+        const ownerIndex = resolvePlayerIndex(action, 'ownerId', 'ownerIndex');
+        if (ownerIndex < 0) return;
+        const owner = gameState.players[ownerIndex];
+        if (!owner) return;
+        const itemIndex = owner.inventory.findIndex((item) => item.instanceId === action.instanceId);
+        if (itemIndex < 0) return;
+
+        if (action.itemAction === 'use') {
+            const item = owner.inventory.splice(itemIndex, 1)[0];
+            applyActions(item.actions, ownerIndex);
+            showItemNotification(`Usato: ${item.name}. ${item.effectText}`);
+        }
+        if (action.itemAction === 'share') {
+            const targetIndex = resolvePlayerIndex(action, 'targetId', 'targetIndex');
+            if (targetIndex < 0) return;
+            const item = owner.inventory.splice(itemIndex, 1)[0];
+            gameState.players[targetIndex].inventory.push(item);
+            showItemNotification(`Oggetto condiviso: ${item.name} -> ${gameState.players[targetIndex].name}`);
+        }
+
+        updateHUD();
+        broadcastSurvState();
+        persistSurvSave();
     }
 
     function applyLifeDelta(delta, playerIndex) {

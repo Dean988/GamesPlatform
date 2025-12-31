@@ -65,10 +65,12 @@ export default async function handler(req, res) {
 
     REGOLE RISPOSTE:
     - Rispondi SOLO con JSON valido (responseMimeType application/json).
-    - Risolvi le scelte del turno in narrativa: 1-2 frasi generali + esiti per giocatore.
+    - Narrativa breve e diretta: massimo 2-3 frasi, vai subito al punto.
+    - Inserisci sempre 1-2 dettagli dello scenario scelto e del contesto survival.
+    - Conseguenze legate a risorse/sopravvivenza (radiazioni, fame, riparo, acqua).
     - Lo scenario deve cambiare in base alle scelte di ogni giocatore.
     - Se lo scenario e specificato, la storia deve restare coerente con quello.
-    - Usa playerOutcomes per ogni giocatore con scelta: narrativa breve e effetti.
+    - Usa playerOutcomes per ogni giocatore con scelta: esito breve e effetti.
     - playerOutcomes deve includere una voce per ogni scelta in choices (stesso ordine se possibile).
     - In playerOutcomes usa "player" con il nome esatto del giocatore oppure "playerIndex".
     - Usa scoreDelta e lifeDelta SOLO per effetti globali (es. tempesta radioattiva).
@@ -81,7 +83,8 @@ export default async function handler(req, res) {
 
     REGOLE DOMANDA:
     - Fornisci ESATTAMENTE 6 opzioni.
-    - Testo opzioni corto (max 60 caratteri), senza punto finale.
+    - Domanda breve e secca (max 80 caratteri).
+    - Testo opzioni corto (max 45 caratteri), senza punto finale.
     - Dilemmi morali o scelte survival, tono serio.
     - Alcune opzioni devono richiedere un tiro d20: aggiungi requiresRoll true e rollDC (10-18).
 

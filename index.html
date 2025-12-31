@@ -79,7 +79,7 @@
         <div id="impostor-mp" class="mp-panel">
           <div class="mp-title">MULTI DISPOSITIVI</div>
           <div class="mp-row">
-            <input id="impostor-mp-name" type="text" placeholder="Il tuo nome" />
+            <input id="impostor-mp-name" type="text" placeholder="Il tuo nome" maxlength="18" />
             <button id="impostor-host-btn" class="btn-mp">HOSTA</button>
           </div>
           <div class="mp-row">
@@ -92,6 +92,7 @@
             <button id="impostor-copy-code" class="btn-mp tiny">COPIA</button>
           </div>
           <div id="impostor-roster" class="mp-roster"></div>
+          <p id="impostor-mp-error" class="mp-error is-hidden"></p>
         </div>
 
         <div class="divider"></div>
@@ -201,7 +202,7 @@
         <div id="surv-mp" class="mp-panel">
           <div class="mp-title">MULTI DISPOSITIVI</div>
           <div class="mp-row">
-            <input id="surv-mp-name" type="text" placeholder="Il tuo nome" />
+            <input id="surv-mp-name" type="text" placeholder="Il tuo nome" maxlength="18" />
             <button id="surv-host-btn" class="btn-mp">HOSTA</button>
           </div>
           <div class="mp-row">
@@ -214,6 +215,7 @@
             <button id="surv-copy-code" class="btn-mp tiny">COPIA</button>
           </div>
           <div id="surv-roster" class="mp-roster"></div>
+          <p id="surv-mp-error" class="mp-error is-hidden"></p>
         </div>
         <button id="surv-start-btn" class="btn-survivor-action">AVVIA SIMULAZIONE</button>
       </section>
