@@ -1808,25 +1808,56 @@ document.addEventListener('DOMContentLoaded', () => {
         showPanel(sectionResult);
         const lifeTotals = getLifeTotals();
         const livesLine = `Vite residue: ${lifeTotals.current} / ${lifeTotals.max}`;
-        let finaleLines = Array.isArray(data.playerFinale)
-            ? data.playerFinale
-                .map((entry) => {
-                    const name = entry.player || entry.name || '';
-                    const result = entry.result || entry.esito || '';
-                    return name && result ? `${name}: ${result}` : null;
-                })
-                .filter(Boolean)
-            : [];
-        if (!finaleLines.length) {
-            finaleLines = gameState.players.map((player) => {
-                const status = toNumber(player.life, 0) > 0 ? 'Si salva' : 'Non ce la fa';
-                return `${player.name}: ${status}`;
+        let finaleLinesHtml = [];
+        let ttsFinaleLines = [];
+
+        if (Array.isArray(data.playerFinale) && data.playerFinale.length > 0) {
+            data.playerFinale.forEach(entry => {
+                const name = entry.player || entry.name || 'Sconosciuto';
+                const result = entry.result || entry.esito || '';
+                const status = (entry.status || '').toUpperCase();
+                const isVic = status === 'VITTORIA';
+                const colorClass = isVic ? 'surv-res-vic' : 'surv-res-def';
+
+                finaleLinesHtml.push(
+                    `<div class="surv-res-row ${colorClass}">
+                        <strong>${name}</strong> <span class="surv-res-tag">[${status}]</span><br>
+                        ${result}
+                     </div>`
+                );
+                ttsFinaleLines.push(`${name} ${status}: ${result}`);
+            });
+        } else {
+            gameState.players.forEach(p => {
+                const life = toNumber(p.life, 0);
+                const status = life > 0 ? 'VITTORIA' : 'SCONFITTA';
+                const result = life > 0 ? 'Sopravvissuto.' : 'Caduto in missione.';
+                const colorClass = life > 0 ? 'surv-res-vic' : 'surv-res-def';
+                finaleLinesHtml.push(
+                    `<div class="surv-res-row ${colorClass}">
+                        <strong>${p.name}</strong> <span class="surv-res-tag">[${status}]</span><br>
+                        ${result}
+                     </div>`
+                );
+                ttsFinaleLines.push(`${p.name} ${status}: ${result}`);
             });
         }
-        const finaleText = finaleLines.length ? `\n\nEsiti finali:\n${finaleLines.join('\n')}` : '';
+
         const endNarrative = `Gioco terminato. ${data.narrative || ''}`;
-        document.getElementById('surv-end-msg').textContent = `Punteggio Finale: ${gameState.score}\n${livesLine}\n\n${data.narrative || ''}${finaleText}`;
-        const ttsFinaleLines = finaleLines.length ? ['Esiti finali:', ...finaleLines] : [];
+        const endNarrativeHtml = `<p>${endNarrative}</p>`;
+
+        const finalHtml = `
+            <div class="surv-end-stat">Punti: ${gameState.score}</div>
+            <div class="surv-end-stat">${livesLine}</div>
+            <br>
+            ${endNarrativeHtml}
+            <div class="surv-end-list">
+                ${finaleLinesHtml.join('')}
+            </div>
+        `;
+
+        document.getElementById('surv-end-msg').innerHTML = finalHtml;
+        // ttsFinaleLines is already built
         const ttsEndNarrative = [endNarrative, ...ttsFinaleLines].join('\n').trim();
         lastNarrativeDisplay = endNarrative;
         lastNarrativeText = ttsEndNarrative;
