@@ -1090,9 +1090,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     id: player.id,
                     name,
                     inventory: [],
+                    passives: [],
                     life: START_LIVES,
                     maxLife: START_LIVES,
-                    shield: 0
+                    shield: 0,
+                    stats: {
+                        forza: 10,
+                        agilita: 10,
+                        tecnica: 10,
+                        intuito: 10
+                    }
                 });
             });
         } else {
@@ -1102,9 +1109,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 gameState.players.push({
                     name,
                     inventory: [],
+                    passives: [],
                     life: START_LIVES,
                     maxLife: START_LIVES,
-                    shield: 0
+                    shield: 0,
+                    stats: {
+                        forza: 10,
+                        agilita: 10,
+                        tecnica: 10,
+                        intuito: 10
+                    }
                 });
             }
         }
@@ -1185,6 +1199,49 @@ document.addEventListener('DOMContentLoaded', () => {
             lifeWrap.appendChild(dots);
             header.appendChild(nameTitle);
             header.appendChild(lifeWrap);
+
+            // STATS
+            if (p.stats) {
+                const statGrid = document.createElement('div');
+                statGrid.className = 'surv-stat-grid';
+                ['forza', 'agilita', 'tecnica', 'intuito'].forEach(stat => {
+                    const box = document.createElement('div');
+                    box.className = 'surv-stat-box';
+                    const label = document.createElement('span');
+                    label.className = 'surv-stat-label';
+                    label.textContent = stat.substring(0, 3);
+                    const val = document.createElement('span');
+                    val.className = 'surv-stat-val';
+                    val.textContent = p.stats[stat] || 10;
+                    box.appendChild(label);
+                    box.appendChild(val);
+                    statGrid.appendChild(box);
+                });
+                pDiv.appendChild(statGrid);
+            }
+
+            // PASSIVES
+            if (p.passives && p.passives.length > 0) {
+                const passivesWrap = document.createElement('div');
+                passivesWrap.className = 'surv-passives-wrap';
+                const pTitle = document.createElement('div');
+                pTitle.className = 'surv-passives-title';
+                pTitle.textContent = 'Abilità';
+                passivesWrap.appendChild(pTitle);
+
+                const pList = document.createElement('div');
+                pList.className = 'surv-passive-list';
+
+                p.passives.forEach(pass => {
+                    const tag = document.createElement('span');
+                    tag.className = 'surv-passive-tag';
+                    tag.textContent = pass.name;
+                    tag.title = pass.description || '';
+                    pList.appendChild(tag);
+                });
+                passivesWrap.appendChild(pList);
+                pDiv.appendChild(passivesWrap);
+            }
 
             const itemsDiv = document.createElement('div');
             itemsDiv.className = 'surv-items-row';
@@ -1378,14 +1435,58 @@ document.addEventListener('DOMContentLoaded', () => {
                 ? clampNumber(toNumber(option.rollDC, 4), 3, 7)
                 : clampNumber(toNumber(option.rollDC, 12), 5, 19))
             : null;
-        const roll = requiresRoll
-            ? (rollType === 'd7' ? rollD7() : rollType === 'coin' ? rollCoin() : rollD20())
-            : null;
+
+        let roll = null;
+        let rollMode = 'normal'; // normal, advantage, disadvantage
+
+        if (requiresRoll) {
+            if (rollType === 'coin') {
+                roll = rollCoin();
+            } else {
+                // Check stats
+                const statName = option.rollStat ? option.rollStat.toLowerCase() : null;
+                const playerStat = (player.stats && statName && typeof player.stats[statName] !== 'undefined')
+                    ? player.stats[statName]
+                    : null;
+
+                let r1 = rollType === 'd7' ? rollD7() : rollD20();
+
+                if (playerStat !== null && rollDC !== null) {
+                    // Logic: Stat >= DC ? Advantage : Disadvantage
+                    // User said: "Se non si posseggono determinate caratteristiche... prende il più basso. Se si hanno... prende il più alto."
+                    // Assuming "characteristics" means Stat Value. 
+                    // Let's assume if Stat >= DC, it's Advantage (High Skill). If Stat < DC, Disadvantage (Low Skill).
+                    // Or maybe check against a base average? 
+                    // A better approach for "Initial stats" vs "Required":
+                    // Let's assume the DC passed IS the requirement.
+
+                    const r2 = rollType === 'd7' ? rollD7() : rollD20();
+
+                    if (playerStat >= rollDC) {
+                        rollMode = 'advantage';
+                        roll = Math.max(r1, r2);
+                        showItemNotification(`Vantaggio! (${statName} ${playerStat} >= ${rollDC})`);
+                    } else {
+                        rollMode = 'disadvantage';
+                        roll = Math.min(r1, r2);
+                        showItemNotification(`Svantaggio! (${statName} ${playerStat} < ${rollDC})`);
+                    }
+                } else {
+                    roll = r1;
+                }
+            }
+        }
 
         if (requiresRoll && roll !== null) {
             gameState.isRolling = true;
             setOptionsDisabled(true);
+
+            // Pass rollMode to playDiceRoll if we want (not supported yet, using context text)
+            const contextText = rollMode === 'advantage' ? ' (Vantaggio)' : rollMode === 'disadvantage' ? ' (Svantaggio)' : '';
+            if (diceContext) diceContext.textContent += contextText;
+
             await playDiceRoll(player.name, roll, rollDC, rollType);
+
             if (rollType === 'coin') {
                 showRollNotification(`Moneta ${player.name}: ${roll}`);
             } else {
@@ -1502,20 +1603,65 @@ document.addEventListener('DOMContentLoaded', () => {
 
         rewards.forEach((reward) => {
             const count = Math.max(1, toNumber(reward.count, 1));
-            for (let i = 0; i < count; i += 1) {
-                let rarity = normalizeRarity(reward.rarity) || rollRarity();
-                if (gameState.itemLuck > 0) {
-                    rarity = upgradeRarity(rarity, 1);
-                    gameState.itemLuck -= 1;
-                }
+            // Check if it's a custom item
+            if (reward.customItem) {
                 const targetIndex = resolveRewardTarget(reward, fallbackIndex);
                 if (targetIndex >= 0) {
-                    const item = grantItemToPlayer(targetIndex, rarity);
+                    const item = grantItemToPlayer(targetIndex, reward.customItem);
                     if (item) gained.push(item);
+                }
+            } else {
+                // Standard pool item
+                for (let i = 0; i < count; i += 1) {
+                    let rarity = normalizeRarity(reward.rarity) || rollRarity();
+                    if (gameState.itemLuck > 0) {
+                        rarity = upgradeRarity(rarity, 1);
+                        gameState.itemLuck -= 1;
+                    }
+                    const targetIndex = resolveRewardTarget(reward, fallbackIndex);
+                    if (targetIndex >= 0) {
+                        const item = grantItemToPlayer(targetIndex, rarity);
+                        if (item) gained.push(item);
+                    }
                 }
             }
         });
         return gained;
+    }
+
+    function applyPassiveRewards(rewards, fallbackIndex = null) {
+        const gained = [];
+        if (!Array.isArray(rewards)) return gained;
+
+        rewards.forEach((reward) => {
+            const targetIndex = resolveRewardTarget(reward, fallbackIndex);
+            if (targetIndex >= 0 && reward.name) {
+                const passive = {
+                    id: createInstanceId(),
+                    name: reward.name,
+                    description: reward.description || '',
+                    effect: reward.effect || {} // e.g. { stat: 'forza', value: 2 } or { type: 'advantage', condition: 'combat' }
+                };
+                gameState.players[targetIndex].passives.push(passive);
+                gained.push(passive);
+                showItemNotification(`Nuova Abilità: ${passive.name} (${gameState.players[targetIndex].name})`);
+            }
+        });
+        return gained;
+    }
+
+    function applyStatDeltas(deltas, fallbackIndex = null) {
+        if (!Array.isArray(deltas)) return;
+        deltas.forEach(d => {
+            const targetIndex = resolveRewardTarget(d, fallbackIndex);
+            if (targetIndex >= 0 && d.stat && d.value) {
+                const p = gameState.players[targetIndex];
+                if (p.stats && typeof p.stats[d.stat] !== 'undefined') {
+                    p.stats[d.stat] += toNumber(d.value, 0);
+                    showItemNotification(`${d.stat.toUpperCase()} ${d.value > 0 ? '+' : ''}${d.value} (${p.name})`);
+                }
+            }
+        });
     }
 
     function applyTurnOutcome(data, choices) {
@@ -1526,9 +1672,11 @@ document.addEventListener('DOMContentLoaded', () => {
         let totalScoreDelta = toNumber(data.scoreDelta, 0);
         let totalLifeDelta = 0;
         let itemsFound = [];
+        let passivesFound = [];
 
         if (playerOutcomes.length) {
             playerOutcomes.forEach((outcome) => {
+
                 let playerIndex = resolveOutcomePlayerIndex(outcome);
                 if (playerIndex === null && outcome?.choiceId) {
                     const matched = choices.find((entry) => entry.optionId === outcome.choiceId);
@@ -1543,6 +1691,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (playerIndex !== null) {
                     totalLifeDelta += applyLifeDelta(outcome?.lifeDelta, playerIndex);
                     itemsFound = itemsFound.concat(applyItemRewards(outcome?.itemRewards, playerIndex));
+                    passivesFound = passivesFound.concat(applyPassiveRewards(outcome?.passiveRewards, playerIndex));
+                    applyStatDeltas(outcome?.statDeltas, playerIndex);
                 }
             });
         }
@@ -1562,6 +1712,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (appliedScore !== 0) outcomeBits.push(`Punti ${formatSigned(appliedScore)}`);
         if (totalLifeDelta !== 0) outcomeBits.push(`Vite ${formatSigned(totalLifeDelta)}`);
         if (itemsFound.length) outcomeBits.push(`Oggetti +${itemsFound.length}`);
+        if (passivesFound.length) outcomeBits.push(`Abilità +${passivesFound.length}`);
 
         const narrativeBlock = narrativeLines.filter(Boolean).join('\n');
         const extra = outcomeBits.length ? `\n${outcomeBits.join(' | ')}` : '';
@@ -2009,6 +2160,14 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'draw':
                 grantDraw(action, ownerIndex);
                 break;
+            case 'stat':
+                if (owner && owner.stats && action.stat && action.value) {
+                    if (typeof owner.stats[action.stat] !== 'undefined') {
+                        owner.stats[action.stat] += toNumber(action.value, 0);
+                        showItemNotification(`${action.stat.toUpperCase()} aumentata!`);
+                    }
+                }
+                break;
             default:
                 break;
         }
@@ -2028,9 +2187,18 @@ document.addEventListener('DOMContentLoaded', () => {
         return item ? cloneItem(item) : null;
     }
 
-    function grantItemToPlayer(index, rarity) {
+    function grantItemToPlayer(index, rarityOrItem) {
         if (!gameState.players[index]) return null;
-        const item = drawItemFromPool(rarity);
+
+        let item;
+        if (typeof rarityOrItem === 'object' && rarityOrItem !== null) {
+            // Custom item provided directly
+            item = cloneItem(rarityOrItem);
+        } else {
+            // Rarity string, draw from pool
+            item = drawItemFromPool(rarityOrItem);
+        }
+
         if (!item) return null;
         gameState.players[index].inventory.push(item);
         showItemNotification(`Oggetto trovato: ${item.name} (${gameState.players[index].name})`);

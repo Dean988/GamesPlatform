@@ -130,6 +130,7 @@ html {
   line-height: 1;
   margin: 0;
   background: linear-gradient(to bottom right, #fff, #aaa);
+  background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -1181,9 +1182,12 @@ body[data-mode="single"] .mp-panel {
   align-items: center;
   gap: 10px;
   border-radius: 12px;
-  min-height: 76px;
+  min-height: 80px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
   touch-action: manipulation;
+  margin-bottom: 6px;
+  font-weight: bold;
+  letter-spacing: 0.5px;
 }
 
 .btn-surv-opt .opt-roll {
@@ -1447,6 +1451,69 @@ body[data-mode="single"] .mp-panel {
   color: #a66;
 }
 
+/* STATS & PASSIVES */
+.surv-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 10px 0;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #222;
+}
+
+.surv-stat-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #0e0e0e;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 4px;
+}
+
+.surv-stat-label {
+  font-size: 0.5rem;
+  color: #777;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.surv-stat-val {
+  font-size: 0.9rem;
+  color: var(--surv-green);
+  font-weight: bold;
+}
+
+.surv-passives-wrap {
+  margin-top: 8px;
+}
+
+.surv-passives-title {
+  font-size: 0.6rem;
+  color: #555;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  letter-spacing: 0.1em;
+}
+
+.surv-passive-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.surv-passive-tag {
+  font-size: 0.65rem;
+  background: rgba(57, 255, 20, 0.1);
+  color: #cbffc2;
+  border: 1px solid rgba(57, 255, 20, 0.3);
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: help;
+}
+
 @keyframes pulse-border {
   0% {
     box-shadow: 0 0 5px #ff003c;
@@ -1586,16 +1653,20 @@ body[data-mode="single"] .mp-panel {
   0% {
     transform: rotate(0deg) scale(1);
   }
+
   40% {
     transform: rotate(180deg) scale(1.05);
   }
+
   70% {
     transform: rotate(320deg) scale(0.98);
   }
+
   100% {
     transform: rotate(360deg) scale(1);
   }
 }
+
 .home-title {
   font-size: 1.4rem;
   letter-spacing: 0.12em;

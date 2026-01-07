@@ -3,50 +3,50 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 const modelName = 'gemini-2.5-flash';
 
 export default async function handler(req, res) {
-    if (req.method !== 'POST') {
-        res.status(405).json({ error: 'Method not allowed' });
-        return;
-    }
+  if (req.method !== 'POST') {
+    res.status(405).json({ error: 'Method not allowed' });
+    return;
+  }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-        res.status(500).json({ error: 'Missing GEMINI_API_KEY' });
-        return;
-    }
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    res.status(500).json({ error: 'Missing GEMINI_API_KEY' });
+    return;
+  }
 
-    let body = {};
+  let body = {};
+  try {
+    body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+  } catch (e) {
+    body = {};
+  }
+
+  const { players, turn, maxTurns, lives, maxLives, choices, history, scenario, finaleRequired } = body;
+
+  function safeJsonParse(raw) {
+    if (!raw || typeof raw !== 'string') return null;
+    const cleaned = raw.replace(/```json|```/gi, '').trim();
     try {
-        body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      return JSON.parse(cleaned);
     } catch (e) {
-        body = {};
-    }
-
-    const { players, turn, maxTurns, lives, maxLives, choices, history, scenario, finaleRequired } = body;
-
-    function safeJsonParse(raw) {
-        if (!raw || typeof raw !== 'string') return null;
-        const cleaned = raw.replace(/```json|```/gi, '').trim();
+      const start = cleaned.indexOf('{');
+      const end = cleaned.lastIndexOf('}');
+      if (start >= 0 && end > start) {
         try {
-            return JSON.parse(cleaned);
-        } catch (e) {
-            const start = cleaned.indexOf('{');
-            const end = cleaned.lastIndexOf('}');
-            if (start >= 0 && end > start) {
-                try {
-                    return JSON.parse(cleaned.slice(start, end + 1));
-                } catch (innerError) {
-                    return null;
-                }
-            }
-            return null;
+          return JSON.parse(cleaned.slice(start, end + 1));
+        } catch (innerError) {
+          return null;
         }
+      }
+      return null;
     }
+  }
 
-    // SYSTEM PROMPT
-    const systemPrompt = `
+  // SYSTEM PROMPT
+  const systemPrompt = `
 
     Sei il Game Master (AI) di "Survivor", un gioco di sopravvivenza post-apocalittica radioattiva.
-    Il gioco e spietato, professionale e immersivo.
+    Il gioco è spietato, professionale e immersivo, ma deve spaziare tra MISTERO, CORAGGIO e STUPORE.
 
     STATO GIOCO:
     - Turno ${turn}/${maxTurns}
@@ -57,100 +57,100 @@ export default async function handler(req, res) {
     SCELTE DEL TURNO (una per giocatore):
     ${JSON.stringify(choices || [])}
 
-    STATISTICHE GIOCATORI (vite e inventario condivisibile):
-    ${JSON.stringify(players)}
+    STATISTICHE GIOCATORI:
+    ${JSON.stringify(players.map(p => ({
+    name: p.name,
+    stats: p.stats, // { forza, agilita, tecnica, intuito }
+    inventory: p.inventory.map(i => i.name),
+    passives: p.passives ? p.passives.map(pass => pass.name) : []
+  })))}
 
     STORIA RECENTE:
     ${history || 'Nessuna. Inizio del gioco.'}
 
     REGOLE RISPOSTE:
     - Rispondi SOLO con JSON valido (responseMimeType application/json).
-    - Narrativa breve e diretta: massimo 2-3 frasi, vai subito al punto.
-    - Inserisci sempre 1-2 dettagli dello scenario scelto e del contesto survival.
-    - A volte inserisci una battuta o un dettaglio ironico per sdrammatizzare (1 frase breve).
-    - Conseguenze legate a risorse/sopravvivenza (radiazioni, fame, riparo, acqua).
-    - Lo scenario deve cambiare in base alle scelte di ogni giocatore.
-    - Se lo scenario e specificato, la storia deve restare coerente con quello.
-    - Usa playerOutcomes per ogni giocatore con scelta: esito breve e effetti.
-    - playerOutcomes deve includere una voce per ogni scelta in choices (stesso ordine se possibile).
-    - In playerOutcomes usa "player" con il nome esatto del giocatore oppure "playerIndex".
-    - Usa scoreDelta e lifeDelta SOLO per effetti globali (es. tempesta radioattiva).
-    - Se una scelta richiede tiro, usa rollType ricevuto: "d20", "d7" o "coin".
-    - Con d20/d7 usa roll e rollDC: successo se roll >= rollDC, fallimento altrimenti.
-    - Con coin usa roll "testa" o "croce": testa = successo, croce = fallimento.
-    - Se roll e molto alto (18-20 su d20, 6-7 su d7), aggiungi ricompense extra.
-    - Se trovi oggetti, usa itemRewards: array di { rarity, count }.
-    - Non nominare oggetti specifici nella narrativa: parla solo di "un oggetto".
-    - Se il gioco e finito, isGameOver true e niente nuova domanda.
-    - Quando finaleRequired e true, isGameOver DEVE essere true e non fornire nuove opzioni.
+    - Narrativa: 2-3 frasi dirette. Includi dettagli su mistero e wonder oltre alla rovina.
+    - Se ci sono combattimenti, descrivi l'azione in modo cinetico.
+    - Gli oggetti sono essenziali: se un giocatore usa un oggetto, questo deve avere impatto sulla storia.
+    - Le STATISTICHE influenzano l'esito: se un giocatore ha statistiche alte, premialo.
+    - Se l'azione richiede una prova, il client tirerà due dadi: se la stat è >= DC prende il migliore (vantaggio), altrimenti il peggiore (svantaggio).
+    - Tu DEVI indicare 'rollStat' (forza, agilita, tecnica, intuito) nelle opzioni che lo richiedono.
 
-    REGOLE DOMANDA:
-    - Fornisci ESATTAMENTE 6 opzioni.
-    - Domanda breve e secca (max 80 caratteri).
-    - Testo opzioni corto (max 45 caratteri), senza punto finale.
-    - Dilemmi morali o scelte survival, tono serio.
-    - Alcune opzioni devono richiedere un tiro: aggiungi requiresRoll true, rollType (d20/d7/coin) e rollDC se serve.
-    - Alterna i tipi di tiro tra i turni (non usare solo d20).
-    - Per coin non usare rollDC.
+    OGGETTI & ABILITÀ:
+    - Oltre agli oggetti standard, puoi e DEVI inventare oggetti custom (customItem) specifici per la storia (chiavi, armi aliene, mappe).
+    - Gli oggetti inventati devono avere: name, rarity, effectText, actions.
+    - Assegna ABILITÀ PASSIVE (passiveRewards) se i giocatori compiono azioni eroiche o scoprono segreti.
+    - Le abilità passive danno bonus permanenti o situazionali.
+    - Puoi aumentare le statistiche dei giocatori (statDeltas) se si allenano o superano prove.
 
-    FINE PARTITA:
-    - Se finaleRequired e true, devi chiudere la storia con isGameOver true.
-    - Descrivi cosa succede a ogni personaggio in playerFinale.
+    COMBATTIMENTI:
+    - Inserisci combattimenti casuali o di trama.
+    - Nelle opzioni di combattimento, richiedi tiri su 'forza' o 'agilita'.
 
     FORMATO RISPOSTA (JSON STRICT):
     {
-      "narrative": "Testo da leggere con TTS.",
+      "narrative": "Testo narrativo.",
       "isGameOver": boolean,
       "scoreDelta": 0,
       "lifeDelta": 0,
       "itemRewards": [
-        { "rarity": "comune", "count": 1 }
+        { "rarity": "comune", "count": 1 },
+        { "customItem": { "name": "Arma Aliena", "rarity": "leggendario", "effectText": "Spara raggi plasma", "actions": [{"type": "score", "delta": 50}] } }
       ],
       "playerOutcomes": [
         {
-          "player": "Nome giocatore",
+          "player": "Nome",
           "choiceId": "A",
-          "narrative": "Esito breve della scelta del giocatore",
+          "narrative": "Esito scelta",
           "scoreDelta": 0,
           "lifeDelta": 0,
-          "itemRewards": [
-            { "rarity": "raro", "count": 1 }
+          "itemRewards": [],
+          "passiveRewards": [
+             { "name": "Veterano", "description": "Più forte in combattimento", "effect": { "stat": "forza", "value": 2 } }
+          ],
+          "statDeltas": [
+             { "stat": "tecnica", "value": 1 }
           ]
         }
       ],
-      "playerFinale": [
-        { "player": "Nome giocatore", "result": "Esito finale del personaggio" }
-      ],
-      "question": "Il testo della domanda/sfida.",
+      "playerFinale": [ { "player": "Nome", "result": "Esito" } ],
+      "question": "Domanda o sfida imminente.",
       "options": [
-        { "id": "A", "text": "Descrizione azione", "requiresRoll": true, "rollType": "d20", "rollDC": 14 }
+        { 
+            "id": "A", 
+            "text": "Attacca brutalmente", 
+            "requiresRoll": true, 
+            "rollType": "d20", 
+            "rollDC": 15,
+            "rollStat": "forza" 
+        }
       ]
     }
 
-    Usa la lingua ITALIANA. Tono serio, drammatico, radioattivo.
+    Usa la lingua ITALIANA. Tono vario: dal cupo all'eroico.
   `;
 
-    try {
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: modelName });
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: modelName });
 
-        // Force JSON output
-        const result = await model.generateContent({
-            contents: [{ role: 'user', parts: [{ text: systemPrompt }] }],
-            generationConfig: { responseMimeType: 'application/json' }
-        });
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: systemPrompt }] }],
+      generationConfig: { responseMimeType: 'application/json' }
+    });
 
-        const responseText = result.response.text();
-        const jsonResponse = safeJsonParse(responseText);
-        if (!jsonResponse) {
-            res.status(502).json({ error: 'Invalid JSON from model' });
-            return;
-        }
-
-        res.status(200).json(jsonResponse);
-
-    } catch (error) {
-        console.error('Gemini API Error:', error);
-        res.status(500).json({ error: 'Generation failed', details: error.message });
+    const responseText = result.response.text();
+    const jsonResponse = safeJsonParse(responseText);
+    if (!jsonResponse) {
+      res.status(502).json({ error: 'Invalid JSON from model' });
+      return;
     }
+
+    res.status(200).json(jsonResponse);
+
+  } catch (error) {
+    console.error('Gemini API Error:', error);
+    res.status(500).json({ error: 'Generation failed', details: error.message });
+  }
 }
